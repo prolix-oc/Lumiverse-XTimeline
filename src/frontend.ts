@@ -9,6 +9,7 @@ import {
 } from './shared'
 
 type UnknownRecord = Record<string, unknown>
+const MAX_VISIBLE_ACTORS = 30
 
 interface TimelineBackendMessage {
   type: string
@@ -76,6 +77,25 @@ function actorMatchesSearch(actor: TimelineActor, query: string): boolean {
     .join(' ')
     .toLocaleLowerCase()
     .includes(normalizedQuery)
+}
+
+function actorSearchRank(actor: TimelineActor, query: string): number {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return 0
+
+  const name = actor.name.toLocaleLowerCase()
+  const handle = actor.handle.toLocaleLowerCase()
+  const role = (actor.role ?? '').toLocaleLowerCase()
+  const bio = actor.bio.toLocaleLowerCase()
+
+  if (name === normalizedQuery || handle === normalizedQuery) return 100
+  if (name.startsWith(normalizedQuery)) return 90
+  if (handle.startsWith(normalizedQuery)) return 80
+  if (name.includes(normalizedQuery)) return 70
+  if (handle.includes(normalizedQuery)) return 60
+  if (role.includes(normalizedQuery)) return 50
+  if (bio.includes(normalizedQuery)) return 40
+  return 0
 }
 
 function actorLeading(actor: TimelineActor) {
@@ -231,6 +251,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-actor-search:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); }
     .xtl-roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 12px; }
     .xtl-roster-empty, .xtl-roster-access { grid-column: 1 / -1; margin: 2px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; }
+    .xtl-actor-card[hidden], .xtl-roster-empty[hidden] { display: none !important; }
     .xtl-roster-access { margin-top: 10px; }
     .xtl-actor-card { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px; border: 1px solid #38404a; border-radius: 12px; background: #0c0f13; }
     .xtl-actor-card-info { min-width: 0; flex: 1; }
@@ -485,9 +506,10 @@ export function setup(ctx: SpindleFrontendContext) {
   const renderRoster = (state: TimelineSnapshot) => {
     const card = createElement('section', 'xtl-card xtl-roster')
     const header = createElement('div', 'xtl-roster-header')
+    const availableCount = createElement('span', 'xtl-chip', `${state.replyActors.length} available`)
     header.append(
       createElement('h3', 'xtl-section-title', 'Invite an actor'),
-      createElement('span', 'xtl-chip', `${state.replyActors.length} available`),
+      availableCount,
     )
     card.appendChild(header)
     const list = createElement('div', 'xtl-roster-list')
@@ -527,18 +549,27 @@ export function setup(ctx: SpindleFrontendContext) {
       const noMatches = createElement('p', 'xtl-roster-empty', 'No actors match that search.')
       list.appendChild(noMatches)
       const applySearch = () => {
-        let matchCount = 0
+        const rankedRows = actorRows
+          .filter((row) => actorMatchesSearch(row.actor, actorSearch))
+          .map((row) => ({ row, rank: actorSearchRank(row.actor, actorSearch) }))
+          .sort((left, right) => right.rank - left.rank || left.row.actor.name.localeCompare(right.row.actor.name))
+        const visibleRows = rankedRows.slice(0, MAX_VISIBLE_ACTORS)
+        const visibleItems = new Set(visibleRows.map(({ row }) => row.item))
         for (const row of actorRows) {
-          const matches = actorMatchesSearch(row.actor, actorSearch)
-          row.item.hidden = !matches
-          if (matches) matchCount += 1
+          row.item.hidden = !visibleItems.has(row.item)
         }
-        noMatches.hidden = matchCount > 0
+        for (const { row } of visibleRows) list.insertBefore(row.item, noMatches)
+        noMatches.hidden = rankedRows.length > 0
+        availableCount.textContent = actorSearch.trim() || rankedRows.length > MAX_VISIBLE_ACTORS
+          ? `${visibleRows.length} of ${rankedRows.length} shown`
+          : `${rankedRows.length} available`
       }
-      search.addEventListener('input', () => {
+      const updateSearch = () => {
         actorSearch = search.value
         applySearch()
-      })
+      }
+      search.addEventListener('input', updateSearch)
+      search.addEventListener('search', updateSearch)
       applySearch()
     } else {
       const missingCharacterPermission = !state.permissions.includes('characters')
