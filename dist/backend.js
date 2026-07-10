@@ -333,21 +333,32 @@ function getPersonaAuthor(directory, requestedId, settings) {
   const personaId = requested ?? settings.selectedPersonaId ?? directory.activePersonaId;
   return directory.personas.find((persona) => persona.sourceId === personaId) ?? directory.personas[0] ?? fallbackPersona();
 }
-function getReplyActor(directory, actorKey) {
+function getReplyActor(directory, actorKey, fallbackActor) {
   if (typeof actorKey !== "string")
     throw new Error("Choose a character card or Council member first.");
   const actor = directory.replyActors.find((candidate) => candidate.key === actorKey);
-  if (!actor)
-    throw new Error("That timeline actor is no longer available.");
-  return actor;
+  if (actor)
+    return actor;
+  if (fallbackActor?.key === actorKey && (fallbackActor.kind === "character" || fallbackActor.kind === "council")) {
+    return fallbackActor;
+  }
+  throw new Error("That timeline actor is no longer available.");
 }
-function getThreadOwnerActor(state, directory, post) {
+function getReplyingThreadActor(state, post) {
   if (!post)
     return null;
-  const root = state.posts.find((candidate) => candidate.id === post.threadRootId);
-  if (!root || root.author.kind !== "character" && root.author.kind !== "council")
-    return null;
-  return directory.replyActors.find((actor) => actor.key === root.author.key) ?? null;
+  const postsById = new Map(state.posts.map((candidate) => [candidate.id, candidate]));
+  let cursor = post.replyToId ? postsById.get(post.replyToId) : post;
+  const visited = new Set;
+  while (cursor && !visited.has(cursor.id)) {
+    const current = cursor;
+    visited.add(current.id);
+    if (current.author.kind === "character" || current.author.kind === "council") {
+      return current.author;
+    }
+    cursor = current.replyToId ? postsById.get(current.replyToId) : undefined;
+  }
+  return null;
 }
 function getRosterActors(state, directory) {
   const actorByKey = new Map(directory.replyActors.map((actor) => [actor.key, actor]));
@@ -535,22 +546,23 @@ async function createUserWeave(payload, userId) {
   const chatSource = await resolveChatSource(payload.chatId, directory, userId);
   const author = getPersonaAuthor(directory, payload.personaId, state.settings);
   const source = chatSource ? "chat_share" : "manual";
-  state.posts.unshift(createPost({ author, content, replyTo, source, chatSource }));
+  const userPost = createPost({ author, content, replyTo, source, chatSource });
+  state.posts.unshift(userPost);
   state.posts = prunePosts(state.posts);
   await saveState(state, userId);
   await sendState(userId, state, directory);
-  const threadOwner = getThreadOwnerActor(state, directory, state.posts[0]);
+  const replyingActor = getReplyingThreadActor(state, userPost);
   const invitedActorKey = typeof payload.inviteActorKey === "string" && payload.inviteActorKey ? payload.inviteActorKey : null;
-  if (threadOwner) {
-    await createActorReply(state, directory, state.posts[0], threadOwner.key, userId);
+  if (replyingActor) {
+    await createActorReply(state, directory, userPost, replyingActor.key, userId, replyingActor);
   } else if (invitedActorKey) {
-    await createActorReply(state, directory, state.posts[0], invitedActorKey, userId);
+    await createActorReply(state, directory, userPost, invitedActorKey, userId);
   } else {
     sendActivity(userId, false);
   }
 }
-async function createActorReply(state, directory, target, actorKey, userId) {
-  const actor = getReplyActor(directory, actorKey);
+async function createActorReply(state, directory, target, actorKey, userId, fallbackActor) {
+  const actor = getReplyActor(directory, actorKey, fallbackActor);
   sendActivity(userId, true, actor.name);
   try {
     const content = await runSidecar(state, directory, replyMessages(actor, target, threadForPost(state, target)), 170, userId);

@@ -153,10 +153,18 @@ function orderedPosts(posts) {
   return result;
 }
 function actorWhoOwnsThread(post, state) {
-  const root = state.state.posts.find((candidate) => candidate.id === post.threadRootId);
-  if (!root || root.author.kind !== "character" && root.author.kind !== "council")
-    return null;
-  return state.replyActors.find((actor) => actor.key === root.author.key) ?? null;
+  const postsById = new Map(state.state.posts.map((candidate) => [candidate.id, candidate]));
+  let cursor = post;
+  const visited = new Set;
+  while (cursor && !visited.has(cursor.id)) {
+    const current = cursor;
+    visited.add(current.id);
+    if (current.author.kind === "character" || current.author.kind === "council") {
+      return current.author;
+    }
+    cursor = current.replyToId ? postsById.get(current.replyToId) : undefined;
+  }
+  return null;
 }
 function timeUntil(timestamp) {
   if (!timestamp || timestamp <= Date.now())
