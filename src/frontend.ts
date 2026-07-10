@@ -300,7 +300,6 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-post-name-row { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
     .xtl-post-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
     .xtl-post-handle, .xtl-post-time { color: var(--xtl-muted); font-size: 12px; white-space: nowrap; }
-    .xtl-post-bio { color: var(--xtl-muted); font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .xtl-avatar { flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px; border: 2px solid color-mix(in srgb, var(--xtl-blue) 44%, #45505c); border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #1d9bf0, #7856ff); color: #fff; font-size: 12px; font-weight: 800; }
     .xtl-avatar--small { width: 32px; height: 32px; font-size: 10px; }
     .xtl-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -728,7 +727,7 @@ export function setup(ctx: SpindleFrontendContext) {
       createElement('span', 'xtl-post-handle', `@${post.author.handle}`),
       createElement('span', 'xtl-post-time', `· ${relativeTime(post.createdAt)}`),
     )
-    author.append(nameRow, createElement('div', 'xtl-post-bio', post.author.role ?? post.author.bio))
+    author.appendChild(nameRow)
     header.append(actorAvatar(post.author), author)
     article.appendChild(header)
     article.appendChild(createElement('div', 'xtl-post-body', post.content))
