@@ -4,6 +4,7 @@ var REACTION_EMOJIS = ["❤", "✨", "\uD83D\uDD25", "\uD83D\uDE02"];
 
 // src/frontend.ts
 var MAX_VISIBLE_ACTORS = 30;
+var MAX_MENTION_MATCHES = 20;
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -72,6 +73,23 @@ function actorSearchRank(actor, query) {
   if (bio.includes(normalizedQuery))
     return 40;
   return 0;
+}
+function mentionQueryAtCursor(text, cursor) {
+  const beforeCursor = text.slice(0, cursor);
+  const match = /(^|\s)@([a-zA-Z0-9_]*)$/.exec(beforeCursor);
+  if (!match)
+    return null;
+  return {
+    start: cursor - match[2].length - 1,
+    end: cursor,
+    query: match[2]
+  };
+}
+function actorMatchesMention(actor, query) {
+  const normalizedQuery = query.toLocaleLowerCase();
+  if (!normalizedQuery)
+    return true;
+  return actor.name.toLocaleLowerCase().includes(normalizedQuery) || actor.handle.toLocaleLowerCase().includes(normalizedQuery);
 }
 function actorLeading(actor) {
   if (actor.avatarUrl) {
@@ -162,6 +180,7 @@ function setup(ctx) {
   let error = "";
   let pendingDraft = null;
   let actorSearch = "";
+  let mentionActorKey = null;
   let personaPicker = null;
   const tab = ctx.ui.registerDrawerTab({
     id: "timeline",
@@ -183,7 +202,7 @@ function setup(ctx) {
     .xtl-composer { padding: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--xtl-blue) 10%, var(--xtl-surface)), var(--xtl-surface) 45%); }
     .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 9px; }
     .xtl-composer-top { justify-content: space-between; margin-bottom: 10px; }
-    .xtl-composer-writing { display: flex; align-items: flex-start; gap: 11px; }
+    .xtl-composer-writing { position: relative; display: flex; align-items: flex-start; gap: 11px; }
     .xtl-composer-writing .xtl-textarea { flex: 1; }
     .xtl-persona-picker { min-width: 250px; }
     .xtl-composer-label { color: #d9e3ec; font-size: 13px; font-weight: 700; }
@@ -193,6 +212,15 @@ function setup(ctx) {
     .xtl-textarea { display: block; width: 100%; min-height: 104px; padding: 12px; resize: vertical; outline: none; font-size: 15px; line-height: 1.45; }
     .xtl-textarea::placeholder { color: #75808c; }
     .xtl-textarea:focus, .xtl-select:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
+    .xtl-mention-popover { position: absolute; z-index: 3; top: calc(100% - 8px); left: 51px; right: 0; max-height: 264px; overflow-y: auto; border: 1px solid #3a4148; border-radius: 13px; background: #10151c; box-shadow: 0 12px 28px rgb(0 0 0 / 38%); padding: 5px; }
+    .xtl-mention-popover[hidden] { display: none; }
+    .xtl-mention-option { display: flex; align-items: center; width: 100%; gap: 9px; box-sizing: border-box; border: 0; border-radius: 9px; background: transparent; color: #f4f7fa; padding: 7px; cursor: pointer; font: inherit; text-align: left; }
+    .xtl-mention-option:hover, .xtl-mention-option--active { background: var(--xtl-blue-soft); }
+    .xtl-mention-option:focus-visible { outline: 2px solid var(--xtl-blue); outline-offset: -2px; }
+    .xtl-mention-option-copy { min-width: 0; flex: 1; }
+    .xtl-mention-option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
+    .xtl-mention-option-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 1px; }
+    .xtl-mention-empty { margin: 0; padding: 9px; color: var(--xtl-muted); font-size: 12px; }
     .xtl-select { max-width: 210px; min-width: 0; padding: 7px 30px 7px 10px; font-size: 12px; font-weight: 600; }
     .xtl-composer-controls { justify-content: space-between; margin-top: 11px; flex-wrap: wrap; }
     .xtl-composer-actions { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
@@ -355,8 +383,12 @@ function setup(ctx) {
     textarea.value = draft;
     textarea.disabled = busy;
     const writingRow = createElement("div", "xtl-composer-writing");
+    const mentionPopover = createElement("div", "xtl-mention-popover");
+    mentionPopover.hidden = true;
+    mentionPopover.setAttribute("role", "listbox");
+    mentionPopover.setAttribute("aria-label", "Mention an actor");
     const persona = selectedPersona();
-    writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea);
+    writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea, mentionPopover);
     card.appendChild(writingRow);
     const controls = createElement("div", "xtl-composer-controls");
     const actions = createElement("div", "xtl-composer-actions");
@@ -369,8 +401,9 @@ function setup(ctx) {
       send({ type: "prepare_chat_weave" });
     });
     actions.appendChild(chatButton);
+    let inviteSelect = null;
     if (state.replyActors.length && !replyThreadOwner) {
-      const inviteSelect = document.createElement("select");
+      inviteSelect = document.createElement("select");
       inviteSelect.className = "xtl-select";
       inviteSelect.setAttribute("aria-label", "Invite a reply");
       const none = document.createElement("option");
@@ -385,42 +418,144 @@ function setup(ctx) {
       }
       inviteSelect.value = inviteActorKey;
       inviteSelect.disabled = busy || !state.permissions.includes("generation");
-      inviteSelect.addEventListener("change", () => {
-        inviteActorKey = inviteSelect.value;
+      inviteSelect.addEventListener("change", (event) => {
+        inviteActorKey = event.currentTarget.value;
+        mentionActorKey = null;
       });
       actions.appendChild(inviteSelect);
     }
     const weave = button(replyThreadOwner ? `Weave + @${replyThreadOwner.handle} reply` : inviteActorKey ? "Weave + invite" : "Weave", "xtl-button xtl-button--primary");
+    let activeMentionQuery = null;
+    let mentionMatches = [];
+    let activeMentionIndex = 0;
+    const selectedMentionActor = () => mentionActorKey ? state.replyActors.find((actor) => actor.key === mentionActorKey) ?? null : null;
+    const draftStillMentions = (actor, text) => text.toLocaleLowerCase().includes(`@${actor.handle}`.toLocaleLowerCase());
+    const updateWeaveLabel = () => {
+      const mentionActor = selectedMentionActor();
+      weave.textContent = replyThreadOwner ? `Weave + @${replyThreadOwner.handle} reply` : mentionActor && draftStillMentions(mentionActor, textarea.value) && state.permissions.includes("generation") ? `Weave + @${mentionActor.handle} reply` : inviteActorKey ? "Weave + invite" : "Weave";
+    };
+    const insertMention = (actor) => {
+      if (!activeMentionQuery)
+        return;
+      const before = textarea.value.slice(0, activeMentionQuery.start);
+      const after = textarea.value.slice(activeMentionQuery.end);
+      const spacer = after && /^[\s.,!?;:)]/.test(after) ? "" : " ";
+      const next = `${before}@${actor.handle}${spacer}${after}`.slice(0, MAX_WEAVE_LENGTH);
+      const cursor = Math.min(next.length, before.length + actor.handle.length + 2);
+      textarea.value = next;
+      mentionActorKey = actor.key;
+      if (!replyThreadOwner && state.permissions.includes("generation")) {
+        inviteActorKey = actor.key;
+        if (inviteSelect)
+          inviteSelect.value = actor.key;
+      }
+      activeMentionQuery = null;
+      mentionMatches = [];
+      mentionPopover.hidden = true;
+      syncComposerControls();
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    };
+    const updateMentionPopover = () => {
+      activeMentionQuery = mentionQueryAtCursor(textarea.value, textarea.selectionStart ?? textarea.value.length);
+      mentionMatches = activeMentionQuery ? state.replyActors.filter((actor) => actorMatchesMention(actor, activeMentionQuery?.query ?? "")).map((actor) => ({ actor, rank: actorSearchRank(actor, activeMentionQuery?.query ?? "") })).sort((left, right) => right.rank - left.rank || left.actor.name.localeCompare(right.actor.name)).slice(0, MAX_MENTION_MATCHES).map(({ actor }) => actor) : [];
+      activeMentionIndex = Math.min(activeMentionIndex, Math.max(0, mentionMatches.length - 1));
+      mentionPopover.replaceChildren();
+      if (!activeMentionQuery || busy) {
+        mentionPopover.hidden = true;
+        return;
+      }
+      mentionPopover.hidden = false;
+      if (!mentionMatches.length) {
+        mentionPopover.appendChild(createElement("p", "xtl-mention-empty", "No characters or Council members match."));
+        return;
+      }
+      mentionMatches.forEach((actor, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = `xtl-mention-option${index === activeMentionIndex ? " xtl-mention-option--active" : ""}`;
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(index === activeMentionIndex));
+        const copy = createElement("div", "xtl-mention-option-copy");
+        copy.append(createElement("div", "xtl-mention-option-name", actor.name), createElement("div", "xtl-mention-option-meta", `@${actor.handle} · ${actor.role ?? actor.bio}`));
+        option.append(actorAvatar(actor, "small"), copy);
+        option.addEventListener("mousedown", (event) => event.preventDefault());
+        option.addEventListener("click", () => insertMention(actor));
+        mentionPopover.appendChild(option);
+      });
+    };
     weave.disabled = busy || !draft.trim();
     const syncComposerControls = () => {
       draft = textarea.value.slice(0, MAX_WEAVE_LENGTH);
+      const mentionActor = selectedMentionActor();
+      if (mentionActor && !draftStillMentions(mentionActor, draft)) {
+        if (inviteActorKey === mentionActor.key)
+          inviteActorKey = "";
+        if (inviteSelect?.value === mentionActor.key)
+          inviteSelect.value = "";
+        mentionActorKey = null;
+      }
       const counter = root.querySelector(".xtl-counter");
       if (counter)
         counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`;
       weave.disabled = busy || !draft.trim();
+      updateWeaveLabel();
+      updateMentionPopover();
     };
     textarea.addEventListener("input", syncComposerControls);
+    textarea.addEventListener("click", updateMentionPopover);
+    textarea.addEventListener("focus", updateMentionPopover);
+    textarea.addEventListener("keyup", (event) => {
+      if (event.key !== "Escape")
+        updateMentionPopover();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && activeMentionQuery) {
+        event.preventDefault();
+        activeMentionQuery = null;
+        mentionMatches = [];
+        mentionPopover.hidden = true;
+        return;
+      }
+      if (!activeMentionQuery || !mentionMatches.length)
+        return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        activeMentionIndex = (activeMentionIndex + direction + mentionMatches.length) % mentionMatches.length;
+        updateMentionPopover();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        insertMention(mentionMatches[activeMentionIndex]);
+      }
+    });
     weave.addEventListener("click", () => {
       const persona2 = selectedPersona();
-      pendingDraft = { text: draft, replyToId, chatSource };
+      const invitedActorKey = inviteActorKey;
+      pendingDraft = { text: draft, replyToId, chatSource, inviteActorKey: invitedActorKey, mentionActorKey };
       const payload = {
         type: "create_weave",
         content: draft,
         personaId: persona2?.sourceId ?? null,
         replyToId,
-        inviteActorKey,
+        inviteActorKey: invitedActorKey,
         chatId: chatSource?.chatId
       };
       draft = "";
       replyToId = null;
       chatSource = null;
+      if (mentionActorKey && inviteActorKey === mentionActorKey)
+        inviteActorKey = "";
+      mentionActorKey = null;
       busy = true;
-      busyActorName = inviteActorKey ? "timeline reply" : null;
+      busyActorName = invitedActorKey ? "timeline reply" : null;
       render();
       send(payload);
     });
     controls.append(actions, createElement("span", "xtl-counter", `${draft.length}/${MAX_WEAVE_LENGTH}`), weave);
     card.appendChild(controls);
+    updateWeaveLabel();
+    updateMentionPopover();
     return card;
   };
   const renderPost = (post, depth, state) => {
@@ -699,6 +834,8 @@ function setup(ctx) {
           draft = pendingDraft.text;
         replyToId = pendingDraft.replyToId;
         chatSource = pendingDraft.chatSource;
+        inviteActorKey = pendingDraft.inviteActorKey;
+        mentionActorKey = pendingDraft.mentionActorKey;
         pendingDraft = null;
       }
       busy = false;
