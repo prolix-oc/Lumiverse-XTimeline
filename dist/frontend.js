@@ -182,6 +182,7 @@ function setup(ctx) {
   let actorSearch = "";
   let mentionActorKey = null;
   let personaPicker = null;
+  let disposeMentionPortal = null;
   const tab = ctx.ui.registerDrawerTab({
     id: "timeline",
     title: "Lumiverse Timeline",
@@ -202,7 +203,7 @@ function setup(ctx) {
     .xtl-composer { padding: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--xtl-blue) 10%, var(--xtl-surface)), var(--xtl-surface) 45%); }
     .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 9px; }
     .xtl-composer-top { justify-content: space-between; margin-bottom: 10px; }
-    .xtl-composer-writing { position: relative; display: flex; align-items: flex-start; gap: 11px; }
+    .xtl-composer-writing { display: flex; align-items: flex-start; gap: 11px; }
     .xtl-composer-writing .xtl-textarea { flex: 1; }
     .xtl-persona-picker { min-width: 250px; }
     .xtl-composer-label { color: #d9e3ec; font-size: 13px; font-weight: 700; }
@@ -212,7 +213,7 @@ function setup(ctx) {
     .xtl-textarea { display: block; width: 100%; min-height: 104px; padding: 12px; resize: vertical; outline: none; font-size: 15px; line-height: 1.45; }
     .xtl-textarea::placeholder { color: #75808c; }
     .xtl-textarea:focus, .xtl-select:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
-    .xtl-mention-popover { position: absolute; z-index: 3; top: calc(100% - 8px); left: 51px; right: 0; max-height: 264px; overflow-y: auto; border: 1px solid #3a4148; border-radius: 13px; background: #10151c; box-shadow: 0 12px 28px rgb(0 0 0 / 38%); padding: 5px; }
+    .xtl-mention-popover { position: fixed; z-index: 2147483647; max-height: 264px; overflow-y: auto; border: 1px solid #3a4148; border-radius: 13px; background: #10151c; box-shadow: 0 12px 28px rgb(0 0 0 / 38%); padding: 5px; }
     .xtl-mention-popover[hidden] { display: none; }
     .xtl-mention-option { display: flex; align-items: center; width: 100%; gap: 9px; box-sizing: border-box; border: 0; border-radius: 9px; background: transparent; color: #f4f7fa; padding: 7px; cursor: pointer; font: inherit; text-align: left; }
     .xtl-mention-option:hover, .xtl-mention-option--active { background: var(--xtl-blue-soft); }
@@ -387,8 +388,44 @@ function setup(ctx) {
     mentionPopover.hidden = true;
     mentionPopover.setAttribute("role", "listbox");
     mentionPopover.setAttribute("aria-label", "Mention an actor");
+    const ownerDocument = tab.root.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView;
+    const positionMentionPopover = () => {
+      const rect = textarea.getBoundingClientRect();
+      const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth;
+      const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+      const edge = 8;
+      const width = Math.max(200, Math.min(rect.width, viewportWidth - edge * 2));
+      const left = Math.max(edge, Math.min(rect.left, viewportWidth - width - edge));
+      const spaceBelow = viewportHeight - rect.bottom - edge;
+      const spaceAbove = rect.top - edge;
+      const placeAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(72, Math.min(264, placeAbove ? spaceAbove : spaceBelow));
+      mentionPopover.style.left = `${left}px`;
+      mentionPopover.style.width = `${width}px`;
+      mentionPopover.style.maxHeight = `${maxHeight}px`;
+      mentionPopover.style.top = `${placeAbove ? Math.max(edge, rect.top - maxHeight - 6) : rect.bottom + 6}px`;
+    };
+    const rootStyles = ownerWindow?.getComputedStyle(root);
+    for (const property of ["--xtl-blue", "--xtl-blue-soft"]) {
+      const value = rootStyles?.getPropertyValue(property);
+      if (value)
+        mentionPopover.style.setProperty(property, value);
+    }
+    const removeMentionPortal = () => {
+      ownerWindow?.removeEventListener("resize", positionMentionPopover);
+      ownerDocument.removeEventListener("scroll", positionMentionPopover, true);
+      mentionPopover.remove();
+      if (disposeMentionPortal === removeMentionPortal)
+        disposeMentionPortal = null;
+    };
+    disposeMentionPortal = removeMentionPortal;
+    ownerDocument.body.appendChild(mentionPopover);
+    ownerWindow?.addEventListener("resize", positionMentionPopover);
+    ownerDocument.addEventListener("scroll", positionMentionPopover, true);
+    positionMentionPopover();
     const persona = selectedPersona();
-    writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea, mentionPopover);
+    writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea);
     card.appendChild(writingRow);
     const controls = createElement("div", "xtl-composer-controls");
     const actions = createElement("div", "xtl-composer-actions");
@@ -466,6 +503,7 @@ function setup(ctx) {
         return;
       }
       mentionPopover.hidden = false;
+      positionMentionPopover();
       if (!mentionMatches.length) {
         mentionPopover.appendChild(createElement("p", "xtl-mention-empty", "No characters or Council members match."));
         return;
@@ -799,6 +837,8 @@ function setup(ctx) {
     return card;
   };
   const render = () => {
+    disposeMentionPortal?.();
+    disposeMentionPortal = null;
     personaPicker?.destroy();
     personaPicker = null;
     root.replaceChildren(renderHeader());
@@ -876,6 +916,8 @@ function setup(ctx) {
   send({ type: "load_timeline" });
   ctx.ready();
   return () => {
+    disposeMentionPortal?.();
+    disposeMentionPortal = null;
     personaPicker?.destroy();
     personaPicker = null;
     unsubscribeMessages();
