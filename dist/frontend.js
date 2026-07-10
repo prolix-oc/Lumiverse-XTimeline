@@ -134,6 +134,22 @@ function orderedPosts(posts) {
     visit(root, 0);
   return result;
 }
+function actorWhoOwnsThread(post, state) {
+  const root = state.state.posts.find((candidate) => candidate.id === post.threadRootId);
+  if (!root || root.author.kind !== "character" && root.author.kind !== "council")
+    return null;
+  return root.author;
+}
+function timeUntil(timestamp) {
+  if (!timestamp || timestamp <= Date.now())
+    return "due now";
+  const minutes = Math.max(1, Math.ceil((timestamp - Date.now()) / 60000));
+  if (minutes < 60)
+    return `in about ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `in about ${hours}h${remainder ? ` ${remainder}m` : ""}`;
+}
 function setup(ctx) {
   ctx.deferReady();
   let snapshot = null;
@@ -213,7 +229,9 @@ function setup(ctx) {
     .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
+    .xtl-roster-browser-header { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--xtl-line); }
     .xtl-section-title { margin: 0; font-size: 15px; letter-spacing: -.015em; }
+    .xtl-roster-copy { margin: 8px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.45; }
     .xtl-actor-search-wrap { margin-top: 12px; }
     .xtl-actor-search { display: block; width: 100%; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 999px; background: #0a0d11; color: #f4f7fa; padding: 9px 13px; font: inherit; font-size: 12px; outline: none; }
     .xtl-actor-search::placeholder { color: #75808c; }
@@ -224,6 +242,7 @@ function setup(ctx) {
     .xtl-roster-access { margin-top: 10px; }
     .xtl-actor-card { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px; border: 1px solid #38404a; border-radius: 12px; background: #0c0f13; }
     .xtl-actor-card-info { min-width: 0; flex: 1; }
+    .xtl-actor-card-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
     .xtl-actor-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
     .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 2px; }
     .xtl-actor-card .xtl-button { color: #9bd7ff; border-color: color-mix(in srgb, var(--xtl-blue) 46%, #39424d); font-size: 11px; padding: 6px 9px; }
@@ -233,8 +252,11 @@ function setup(ctx) {
     .xtl-settings-row { justify-content: space-between; align-items: flex-start; padding-top: 10px; border-top: 1px solid var(--xtl-line); }
     .xtl-settings-label { font-size: 13px; font-weight: 750; }
     .xtl-settings-hint { color: var(--xtl-muted); font-size: 11px; max-width: 240px; line-height: 1.4; margin-top: 3px; }
+    .xtl-interval-inputs { display: flex; align-items: center; gap: 6px; color: var(--xtl-muted); font-size: 12px; }
+    .xtl-number-input { width: 64px; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 7px 6px; font: inherit; font-size: 12px; font-weight: 650; }
+    .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source { margin-left: 0; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } }
+    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source { margin-left: 0; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } }
   `);
   const selectedPersona = () => {
     if (!snapshot)
@@ -300,9 +322,13 @@ function setup(ctx) {
       onChange: (personaId) => send({ type: "update_settings", selectedPersonaId: personaId || null })
     });
     const replyTarget = selectedReplyTarget();
+    const replyThreadOwner = replyTarget ? actorWhoOwnsThread(replyTarget, state) : null;
     if (replyTarget) {
       const context = createElement("p", "xtl-compose-context");
       context.append("Replying to ", createElement("strong", undefined, `@${replyTarget.author.handle}`), document.createTextNode(". "));
+      if (replyThreadOwner) {
+        context.append(createElement("span", "xtl-chip", `@${replyThreadOwner.handle} will respond`));
+      }
       const clear = button("Cancel reply", "xtl-button xtl-button--quiet");
       clear.addEventListener("click", () => {
         replyToId = null;
@@ -343,7 +369,7 @@ function setup(ctx) {
       send({ type: "prepare_chat_weave" });
     });
     actions.appendChild(chatButton);
-    if (state.replyActors.length) {
+    if (state.replyActors.length && !replyThreadOwner) {
       const inviteSelect = document.createElement("select");
       inviteSelect.className = "xtl-select";
       inviteSelect.setAttribute("aria-label", "Invite a reply");
@@ -364,7 +390,7 @@ function setup(ctx) {
       });
       actions.appendChild(inviteSelect);
     }
-    const weave = button(inviteActorKey ? "Weave + invite" : "Weave", "xtl-button xtl-button--primary");
+    const weave = button(replyThreadOwner ? `Weave + @${replyThreadOwner.handle} reply` : inviteActorKey ? "Weave + invite" : "Weave", "xtl-button xtl-button--primary");
     weave.disabled = busy || !draft.trim();
     const syncComposerControls = () => {
       draft = textarea.value.slice(0, MAX_WEAVE_LENGTH);
@@ -424,7 +450,7 @@ function setup(ctx) {
     reply.disabled = busy;
     reply.addEventListener("click", () => {
       replyToId = post.id;
-      inviteActorKey = post.author.kind === "character" || post.author.kind === "council" ? post.author.key : "";
+      inviteActorKey = actorWhoOwnsThread(post, state)?.key ?? "";
       chatSource = null;
       render();
       focusComposer();
@@ -459,9 +485,43 @@ function setup(ctx) {
   const renderRoster = (state) => {
     const card = createElement("section", "xtl-card xtl-roster");
     const header = createElement("div", "xtl-roster-header");
-    const availableCount = createElement("span", "xtl-chip", `${state.replyActors.length} available`);
-    header.append(createElement("h3", "xtl-section-title", "Invite an actor"), availableCount);
+    const invited = new Set(state.state.rosterActorKeys);
+    const rosterActors = state.state.rosterActorKeys.map((key) => state.replyActors.find((actor) => actor.key === key)).filter((actor) => Boolean(actor));
+    const rosterCount = createElement("span", "xtl-chip", `${rosterActors.length} invited`);
+    header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount);
     card.appendChild(header);
+    const interval = `${state.state.settings.minActorWeaveIntervalMinutes}–${state.state.settings.maxActorWeaveIntervalMinutes} min`;
+    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `One invited actor is picked at random to weave every ${interval}; the next one is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Invite actors to let the timeline choose one at random every ${interval}.`));
+    const rosterList = createElement("div", "xtl-roster-list");
+    if (rosterActors.length) {
+      for (const actor of rosterActors) {
+        const item = createElement("div", "xtl-actor-card");
+        const details = createElement("div", "xtl-actor-card-info");
+        details.append(createElement("div", "xtl-actor-card-name", actor.name), createElement("div", "xtl-actor-card-meta", `@${actor.handle} · ${actor.role ?? actor.bio}`));
+        const actions = createElement("div", "xtl-actor-card-actions");
+        const weaveNow = button("Weave now", "xtl-button");
+        weaveNow.disabled = busy || !state.permissions.includes("generation");
+        weaveNow.addEventListener("click", () => {
+          busy = true;
+          busyActorName = actor.name;
+          render();
+          send({ type: "create_actor_weave", actorKey: actor.key });
+        });
+        const remove = button("Remove", "xtl-button xtl-button--quiet");
+        remove.disabled = busy;
+        remove.addEventListener("click", () => send({ type: "toggle_roster_actor", actorKey: actor.key }));
+        actions.append(weaveNow, remove);
+        item.append(actorAvatar(actor, "small"), details, actions);
+        rosterList.appendChild(item);
+      }
+    } else {
+      rosterList.appendChild(createElement("p", "xtl-roster-empty", "No one is invited to post on a schedule yet."));
+    }
+    card.appendChild(rosterList);
+    const browserHeader = createElement("div", "xtl-roster-header xtl-roster-browser-header");
+    const resultsCount = createElement("span", "xtl-chip", `${state.replyActors.length} available`);
+    browserHeader.append(createElement("h3", "xtl-section-title", "Invite actors"), resultsCount);
+    card.appendChild(browserHeader);
     const list = createElement("div", "xtl-roster-list");
     let accessHint = "";
     if (state.replyActors.length) {
@@ -479,15 +539,12 @@ function setup(ctx) {
         const item = createElement("div", "xtl-actor-card");
         const details = createElement("div", "xtl-actor-card-info");
         details.append(createElement("div", "xtl-actor-card-name", actor.name), createElement("div", "xtl-actor-card-meta", `@${actor.handle} · ${actor.role ?? actor.bio}`));
-        const weave = button("Weave", "xtl-button");
-        weave.disabled = busy || !state.permissions.includes("generation");
-        weave.addEventListener("click", () => {
-          busy = true;
-          busyActorName = actor.name;
-          render();
-          send({ type: "create_actor_weave", actorKey: actor.key });
+        const invite = button(invited.has(actor.key) ? "Remove" : "Invite", invited.has(actor.key) ? "xtl-button xtl-button--quiet" : "xtl-button");
+        invite.disabled = busy;
+        invite.addEventListener("click", () => {
+          send({ type: "toggle_roster_actor", actorKey: actor.key });
         });
-        item.append(actorAvatar(actor, "small"), details, weave);
+        item.append(actorAvatar(actor, "small"), details, invite);
         list.appendChild(item);
         actorRows.push({ actor, item });
       }
@@ -503,7 +560,7 @@ function setup(ctx) {
         for (const { row } of visibleRows)
           list.insertBefore(row.item, noMatches);
         noMatches.hidden = rankedRows.length > 0;
-        availableCount.textContent = actorSearch.trim() || rankedRows.length > MAX_VISIBLE_ACTORS ? `${visibleRows.length} of ${rankedRows.length} shown` : `${rankedRows.length} available`;
+        resultsCount.textContent = actorSearch.trim() || rankedRows.length > MAX_VISIBLE_ACTORS ? `${visibleRows.length} of ${rankedRows.length} shown` : `${rankedRows.length} available`;
       };
       const updateSearch = () => {
         actorSearch = search.value;
@@ -553,6 +610,44 @@ function setup(ctx) {
     connectionSelect.addEventListener("change", () => send({ type: "update_settings", sidecarConnectionId: connectionSelect.value || null }));
     row.append(labels, connectionSelect);
     details.appendChild(row);
+    const intervalRow = createElement("div", "xtl-settings-row");
+    const intervalLabels = createElement("div");
+    intervalLabels.append(createElement("div", "xtl-settings-label", "Roster cadence"), createElement("div", "xtl-settings-hint", "The backend chooses one invited actor at random after a delay within this range."));
+    const intervalInputs = createElement("div", "xtl-interval-inputs");
+    const minimum = document.createElement("input");
+    minimum.type = "number";
+    minimum.className = "xtl-number-input";
+    minimum.min = "1";
+    minimum.max = "1440";
+    minimum.step = "1";
+    minimum.value = String(state.state.settings.minActorWeaveIntervalMinutes);
+    minimum.setAttribute("aria-label", "Minimum roster weave interval in minutes");
+    const maximum = document.createElement("input");
+    maximum.type = "number";
+    maximum.className = "xtl-number-input";
+    maximum.min = "1";
+    maximum.max = "1440";
+    maximum.step = "1";
+    maximum.value = String(state.state.settings.maxActorWeaveIntervalMinutes);
+    maximum.setAttribute("aria-label", "Maximum roster weave interval in minutes");
+    const saveIntervals = (changed) => {
+      const minValue = Math.max(1, Math.min(1440, Math.round(Number(minimum.value) || 1)));
+      const maxValue = Math.max(1, Math.min(1440, Math.round(Number(maximum.value) || 1)));
+      if (changed === "minimum" && minValue > maxValue)
+        maximum.value = String(minValue);
+      if (changed === "maximum" && maxValue < minValue)
+        minimum.value = String(maxValue);
+      send({
+        type: "update_settings",
+        minActorWeaveIntervalMinutes: Number(minimum.value),
+        maxActorWeaveIntervalMinutes: Number(maximum.value)
+      });
+    };
+    minimum.addEventListener("change", () => saveIntervals("minimum"));
+    maximum.addEventListener("change", () => saveIntervals("maximum"));
+    intervalInputs.append(minimum, document.createTextNode("to"), maximum, document.createTextNode("min"));
+    intervalRow.append(intervalLabels, intervalInputs);
+    details.appendChild(intervalRow);
     if (!state.permissions.includes("generation")) {
       details.appendChild(createElement("div", "xtl-notice", "Generation permission is not currently granted, so actor-authored weaves and replies are unavailable."));
     } else if (!state.connections.length) {
@@ -563,7 +658,7 @@ function setup(ctx) {
       notice.appendChild(manageConnections);
       details.appendChild(notice);
     } else if (!state.state.settings.sidecarConnectionId) {
-      details.appendChild(createElement("div", "xtl-notice", "Select a Timeline sidecar before inviting actor replies. You can still write your own weaves."));
+      details.appendChild(createElement("div", "xtl-notice", "Select a Timeline sidecar before inviting actor replies or starting the roster. You can still write your own weaves."));
     }
     card.appendChild(details);
     return card;

@@ -1,6 +1,7 @@
 export const TIMELINE_STORAGE_PATH = 'timeline/state.json'
 export const MAX_WEAVE_LENGTH = 500
 export const MAX_POSTS = 320
+export const MAX_ROSTER_ACTORS = 30
 export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
 export type TimelineActorKind = 'persona' | 'character' | 'council'
@@ -44,11 +45,15 @@ export interface TimelinePost {
 export interface TimelineSettings {
   selectedPersonaId: string | null
   sidecarConnectionId: string | null
+  minActorWeaveIntervalMinutes: number
+  maxActorWeaveIntervalMinutes: number
 }
 
 export interface TimelineState {
-  version: 1
+  version: 2
   posts: TimelinePost[]
+  rosterActorKeys: string[]
+  nextRosterWeaveAt: number | null
   settings: TimelineSettings
 }
 
@@ -71,11 +76,15 @@ export interface TimelineSnapshot {
 
 export function createEmptyTimelineState(): TimelineState {
   return {
-    version: 1,
+    version: 2,
     posts: [],
+    rosterActorKeys: [],
+    nextRosterWeaveAt: null,
     settings: {
       selectedPersonaId: null,
       sidecarConnectionId: null,
+      minActorWeaveIntervalMinutes: 30,
+      maxActorWeaveIntervalMinutes: 120,
     },
   }
 }
