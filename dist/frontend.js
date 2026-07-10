@@ -289,7 +289,7 @@ function setup(ctx) {
     .xtl-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .xtl-post-body { margin: 8px 0 11px 50px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #f0f4f7; }
     .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
-    .xtl-post-gif { display: block; max-width: calc(100% - 50px); margin: 10px 0 20px 50px; border-radius: 12px; }
+    .xtl-post-gif { display: block; width: calc(100% - 50px); max-width: none; height: auto; margin: 10px 0 20px 50px; border-radius: 12px; }
     .xtl-post-actions { margin: 8px 0 0 49px; gap: 8px; flex-wrap: wrap; }
     .xtl-post-actions .xtl-button { color: var(--xtl-muted); border-color: transparent; padding: 6px 8px; }
     .xtl-post-actions .xtl-button:hover:not(:disabled) { color: var(--xtl-blue); background: var(--xtl-blue-soft); }
@@ -325,7 +325,7 @@ function setup(ctx) {
     .xtl-number-input { width: 64px; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 7px 6px; font: inherit; font-size: 12px; font-weight: 650; }
     .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } }
+    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } }
   `);
   const selectedPersona = () => {
     if (!snapshot)
