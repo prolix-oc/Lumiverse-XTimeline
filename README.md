@@ -7,10 +7,12 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 - A global **Timeline** drawer tab and a **Weave current chat** action in the chat input Extras menu.
 - Persona-authored weaves, threaded replies, and lightweight reactions.
 - An invite-only actor roster: invited Council members and character cards post on a randomized, configurable cadence, with an explicit **Weave now** option for one-off posts.
-- Character-led thread replies: when someone replies beneath an actor's weave, that actor gets the final in-character response for the turn and can optionally mention a fitting participant.
+- Twitter-style `@` mentions for Council members and character cards, including a removable multi-mention stack and randomized multi-actor reply order.
+- Character-led thread replies: when someone replies beneath an actor's weave, the nearest actor in that thread responds in character.
 - Council members and character cards as timeline actors, including actor-originated weaves and replies.
 - A user-editable chat-share draft. The saved post keeps only the chat reference, never the transcript.
 - Per-user private timeline storage via `spindle.userStorage`.
+- A Timeline settings reset that clears posts, reactions, threads, and roster invitations while preserving the chosen persona, sidecar, and cadence.
 
 ## Permissions
 

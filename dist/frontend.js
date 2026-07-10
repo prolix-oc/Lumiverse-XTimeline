@@ -188,7 +188,7 @@ function setup(ctx) {
   let error = "";
   let pendingDraft = null;
   let actorSearch = "";
-  let mentionActorKey = null;
+  let mentionedActorKeys = [];
   let personaPicker = null;
   let disposeMentionPortal = null;
   const tab = ctx.ui.registerDrawerTab({
@@ -230,6 +230,10 @@ function setup(ctx) {
     .xtl-mention-option-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
     .xtl-mention-option-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 1px; }
     .xtl-mention-empty { margin: 0; padding: 9px; color: var(--xtl-muted); font-size: 12px; }
+    .xtl-mention-stack { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 51px; }
+    .xtl-mention-stack[hidden] { display: none; }
+    .xtl-mention-chip { border: 1px solid color-mix(in srgb, var(--xtl-blue) 50%, #39424d); border-radius: 999px; background: var(--xtl-blue-soft); color: #b9e0ff; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+    .xtl-mention-chip:hover { color: #fff; border-color: var(--xtl-blue); }
     .xtl-select { max-width: 210px; min-width: 0; padding: 7px 30px 7px 10px; font-size: 12px; font-weight: 600; }
     .xtl-composer-controls { justify-content: space-between; margin-top: 11px; flex-wrap: wrap; }
     .xtl-composer-actions { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
@@ -241,6 +245,8 @@ function setup(ctx) {
     .xtl-button--primary { background: var(--xtl-blue); border-color: var(--xtl-blue); color: #fff; padding-inline: 17px; }
     .xtl-button--primary:hover:not(:disabled) { background: #1488d4; border-color: #1488d4; color: #fff; }
     .xtl-button--quiet { border-color: transparent; color: var(--xtl-muted); padding: 6px 8px; }
+    .xtl-button--danger { border-color: color-mix(in srgb, #f4215b 54%, #3a4148); color: #ff9fb8; }
+    .xtl-button--danger:hover:not(:disabled) { border-color: #f4215b; background: color-mix(in srgb, #f4215b 14%, transparent); color: #ffd5df; }
     .xtl-notice { padding: 10px 12px; background: color-mix(in srgb, #f5a524 13%, var(--xtl-surface)); border: 1px solid color-mix(in srgb, #f5a524 56%, var(--xtl-line)); border-radius: 12px; font-size: 12px; line-height: 1.45; margin: 10px 0; }
     .xtl-notice--error { background: color-mix(in srgb, #f4215b 13%, var(--xtl-surface)); border-color: color-mix(in srgb, #f4215b 56%, var(--xtl-line)); }
     .xtl-post { padding: 15px 16px 12px; transition: background .15s ease; }
@@ -435,6 +441,9 @@ function setup(ctx) {
     const persona = selectedPersona();
     writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea);
     card.appendChild(writingRow);
+    const mentionStack = createElement("div", "xtl-mention-stack");
+    mentionStack.hidden = true;
+    card.appendChild(mentionStack);
     const controls = createElement("div", "xtl-composer-controls");
     const actions = createElement("div", "xtl-composer-actions");
     const chatButton = button("Weave current chat");
@@ -465,7 +474,6 @@ function setup(ctx) {
       inviteSelect.disabled = busy || !state.permissions.includes("generation");
       inviteSelect.addEventListener("change", (event) => {
         inviteActorKey = event.currentTarget.value;
-        mentionActorKey = null;
       });
       actions.appendChild(inviteSelect);
     }
@@ -473,11 +481,36 @@ function setup(ctx) {
     let activeMentionQuery = null;
     let mentionMatches = [];
     let activeMentionIndex = 0;
-    const selectedMentionActor = () => mentionActorKey ? state.replyActors.find((actor) => actor.key === mentionActorKey) ?? null : null;
+    const selectedMentionActors = () => mentionedActorKeys.map((key) => state.replyActors.find((actor) => actor.key === key)).filter((actor) => Boolean(actor));
     const draftStillMentions = (actor, text) => text.toLocaleLowerCase().includes(`@${actor.handle}`.toLocaleLowerCase());
     const updateWeaveLabel = () => {
-      const mentionActor = selectedMentionActor();
-      weave.textContent = replyThreadOwner ? `Weave + @${replyThreadOwner.handle} reply` : mentionActor && draftStillMentions(mentionActor, textarea.value) && state.permissions.includes("generation") ? `Weave + @${mentionActor.handle} reply` : inviteActorKey ? "Weave + invite" : "Weave";
+      const replyActorKeys = new Set([
+        ...replyThreadOwner ? [replyThreadOwner.key] : [],
+        ...selectedMentionActors().filter((actor) => draftStillMentions(actor, textarea.value)).map((actor) => actor.key),
+        ...inviteActorKey ? [inviteActorKey] : []
+      ]);
+      const replyCount = state.permissions.includes("generation") ? replyActorKeys.size : 0;
+      weave.textContent = replyCount ? `Weave + ${replyCount} ${replyCount === 1 ? "reply" : "replies"}` : "Weave";
+    };
+    const renderMentionStack = () => {
+      const actors = selectedMentionActors().filter((actor) => draftStillMentions(actor, textarea.value));
+      mentionStack.replaceChildren();
+      mentionStack.hidden = actors.length === 0;
+      for (const actor of actors) {
+        const chip = button(`@${actor.handle} ×`, "xtl-mention-chip");
+        chip.title = `Remove @${actor.handle} mention`;
+        chip.addEventListener("click", () => {
+          const marker = `@${actor.handle}`;
+          const index = textarea.value.toLocaleLowerCase().indexOf(marker.toLocaleLowerCase());
+          if (index >= 0) {
+            textarea.value = `${textarea.value.slice(0, index)}${textarea.value.slice(index + marker.length)}`.replace(/ {2,}/g, " ");
+          }
+          mentionedActorKeys = mentionedActorKeys.filter((key) => key !== actor.key);
+          syncComposerControls();
+          textarea.focus();
+        });
+        mentionStack.appendChild(chip);
+      }
     };
     const insertMention = (actor) => {
       if (!activeMentionQuery)
@@ -488,12 +521,8 @@ function setup(ctx) {
       const next = `${before}@${actor.handle}${spacer}${after}`.slice(0, MAX_WEAVE_LENGTH);
       const cursor = Math.min(next.length, before.length + actor.handle.length + 2);
       textarea.value = next;
-      mentionActorKey = actor.key;
-      if (!replyThreadOwner && state.permissions.includes("generation")) {
-        inviteActorKey = actor.key;
-        if (inviteSelect)
-          inviteSelect.value = actor.key;
-      }
+      if (!mentionedActorKeys.includes(actor.key))
+        mentionedActorKeys = [...mentionedActorKeys, actor.key];
       activeMentionQuery = null;
       mentionMatches = [];
       mentionPopover.hidden = true;
@@ -503,7 +532,7 @@ function setup(ctx) {
     };
     const updateMentionPopover = () => {
       activeMentionQuery = mentionQueryAtCursor(textarea.value, textarea.selectionStart ?? textarea.value.length);
-      mentionMatches = activeMentionQuery ? state.replyActors.filter((actor) => actorMatchesMention(actor, activeMentionQuery?.query ?? "")).map((actor) => ({ actor, rank: actorSearchRank(actor, activeMentionQuery?.query ?? "") })).sort((left, right) => right.rank - left.rank || left.actor.name.localeCompare(right.actor.name)).slice(0, MAX_MENTION_MATCHES).map(({ actor }) => actor) : [];
+      mentionMatches = activeMentionQuery ? state.replyActors.filter((actor) => !mentionedActorKeys.includes(actor.key) && actorMatchesMention(actor, activeMentionQuery?.query ?? "")).map((actor) => ({ actor, rank: actorSearchRank(actor, activeMentionQuery?.query ?? "") })).sort((left, right) => right.rank - left.rank || left.actor.name.localeCompare(right.actor.name)).slice(0, MAX_MENTION_MATCHES).map(({ actor }) => actor) : [];
       activeMentionIndex = Math.min(activeMentionIndex, Math.max(0, mentionMatches.length - 1));
       mentionPopover.replaceChildren();
       if (!activeMentionQuery || busy) {
@@ -533,19 +562,13 @@ function setup(ctx) {
     weave.disabled = busy || !draft.trim();
     const syncComposerControls = () => {
       draft = textarea.value.slice(0, MAX_WEAVE_LENGTH);
-      const mentionActor = selectedMentionActor();
-      if (mentionActor && !draftStillMentions(mentionActor, draft)) {
-        if (inviteActorKey === mentionActor.key)
-          inviteActorKey = "";
-        if (inviteSelect?.value === mentionActor.key)
-          inviteSelect.value = "";
-        mentionActorKey = null;
-      }
+      mentionedActorKeys = selectedMentionActors().filter((actor) => draftStillMentions(actor, draft)).map((actor) => actor.key);
       const counter = root.querySelector(".xtl-counter");
       if (counter)
         counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`;
       weave.disabled = busy || !draft.trim();
       updateWeaveLabel();
+      renderMentionStack();
       updateMentionPopover();
     };
     textarea.addEventListener("input", syncComposerControls);
@@ -578,21 +601,21 @@ function setup(ctx) {
     weave.addEventListener("click", () => {
       const persona2 = selectedPersona();
       const invitedActorKey = inviteActorKey;
-      pendingDraft = { text: draft, replyToId, chatSource, inviteActorKey: invitedActorKey, mentionActorKey };
+      const mentionedKeys = [...mentionedActorKeys];
+      pendingDraft = { text: draft, replyToId, chatSource, inviteActorKey: invitedActorKey, mentionedActorKeys: mentionedKeys };
       const payload = {
         type: "create_weave",
         content: draft,
         personaId: persona2?.sourceId ?? null,
         replyToId,
         inviteActorKey: invitedActorKey,
+        mentionedActorKeys: mentionedKeys,
         chatId: chatSource?.chatId
       };
       draft = "";
       replyToId = null;
       chatSource = null;
-      if (mentionActorKey && inviteActorKey === mentionActorKey)
-        inviteActorKey = "";
-      mentionActorKey = null;
+      mentionedActorKeys = [];
       busy = true;
       busyActorName = invitedActorKey ? "timeline reply" : null;
       render();
@@ -829,6 +852,25 @@ function setup(ctx) {
     intervalInputs.append(minimum, document.createTextNode("to"), maximum, document.createTextNode("min"));
     intervalRow.append(intervalLabels, intervalInputs);
     details.appendChild(intervalRow);
+    const resetRow = createElement("div", "xtl-settings-row");
+    const resetLabels = createElement("div");
+    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, threads, and roster invitations. Your persona, sidecar, and cadence settings stay saved."));
+    const reset = button("Reset timeline", "xtl-button xtl-button--danger");
+    reset.disabled = busy;
+    reset.addEventListener("click", () => {
+      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All weaves, reactions, threads, and roster invitations will be deleted.");
+      if (!confirmed)
+        return;
+      draft = "";
+      replyToId = null;
+      inviteActorKey = "";
+      mentionedActorKeys = [];
+      chatSource = null;
+      pendingDraft = null;
+      send({ type: "reset_timeline" });
+    });
+    resetRow.append(resetLabels, reset);
+    details.appendChild(resetRow);
     if (!state.permissions.includes("generation")) {
       details.appendChild(createElement("div", "xtl-notice", "Generation permission is not currently granted, so actor-authored weaves and replies are unavailable."));
     } else if (!state.connections.length) {
@@ -883,7 +925,7 @@ function setup(ctx) {
         replyToId = pendingDraft.replyToId;
         chatSource = pendingDraft.chatSource;
         inviteActorKey = pendingDraft.inviteActorKey;
-        mentionActorKey = pendingDraft.mentionActorKey;
+        mentionedActorKeys = pendingDraft.mentionedActorKeys;
         pendingDraft = null;
       }
       busy = false;

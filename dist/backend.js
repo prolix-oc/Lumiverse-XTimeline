@@ -364,6 +364,16 @@ function getRosterActors(state, directory) {
   const actorByKey = new Map(directory.replyActors.map((actor) => [actor.key, actor]));
   return state.rosterActorKeys.map((key) => actorByKey.get(key)).filter((actor) => Boolean(actor));
 }
+function uniqueShuffledActors(actors) {
+  const unique = [...new Map(actors.map((actor) => [actor.key, actor])).values()];
+  for (let index = unique.length - 1;index > 0; index -= 1) {
+    const replacement = Math.floor(Math.random() * (index + 1));
+    const current = unique[index];
+    unique[index] = unique[replacement];
+    unique[replacement] = current;
+  }
+  return unique;
+}
 function getPost(state, postId) {
   if (typeof postId !== "string")
     throw new Error("Choose a weave first.");
@@ -553,23 +563,49 @@ async function createUserWeave(payload, userId) {
   await sendState(userId, state, directory);
   const replyingActor = getReplyingThreadActor(state, userPost);
   const invitedActorKey = typeof payload.inviteActorKey === "string" && payload.inviteActorKey ? payload.inviteActorKey : null;
-  if (replyingActor) {
-    await createActorReply(state, directory, userPost, replyingActor.key, userId, replyingActor);
-  } else if (invitedActorKey) {
-    await createActorReply(state, directory, userPost, invitedActorKey, userId);
+  const mentionedActorKeys = [
+    ...Array.isArray(payload.mentionedActorKeys) ? payload.mentionedActorKeys.filter((key) => typeof key === "string") : [],
+    ...typeof payload.mentionedActorKey === "string" ? [payload.mentionedActorKey] : []
+  ];
+  const mentionedActors = [...new Set(mentionedActorKeys)].map((actorKey) => directory.replyActors.find((actor) => actor.key === actorKey)).filter((actor) => Boolean(actor));
+  const invitedActor = invitedActorKey ? directory.replyActors.find((actor) => actor.key === invitedActorKey) ?? null : null;
+  const replyActors = uniqueShuffledActors([
+    ...replyingActor ? [replyingActor] : [],
+    ...mentionedActors,
+    ...invitedActor ? [invitedActor] : []
+  ]);
+  if (replyActors.length) {
+    await createActorReplies(state, directory, userPost, replyActors, userId);
   } else {
     sendActivity(userId, false);
   }
 }
-async function createActorReply(state, directory, target, actorKey, userId, fallbackActor) {
+async function createActorReply(state, directory, target, actorKey, userId, fallbackActor, reportActivity = true) {
   const actor = getReplyActor(directory, actorKey, fallbackActor);
-  sendActivity(userId, true, actor.name);
+  if (reportActivity)
+    sendActivity(userId, true, actor.name);
   try {
     const content = await runSidecar(state, directory, replyMessages(actor, target, threadForPost(state, target)), 170, userId);
     state.posts.unshift(createPost({ author: actor, content, replyTo: target, source: "model" }));
     state.posts = prunePosts(state.posts);
     await saveState(state, userId);
     await sendState(userId, state, directory);
+  } finally {
+    if (reportActivity)
+      sendActivity(userId, false);
+  }
+}
+async function createActorReplies(state, directory, target, actors, userId) {
+  const orderedActors = uniqueShuffledActors(actors);
+  if (!orderedActors.length) {
+    sendActivity(userId, false);
+    return;
+  }
+  sendActivity(userId, true, orderedActors[0].name);
+  try {
+    for (const actor of orderedActors) {
+      await createActorReply(state, directory, target, actor.key, userId, actor, false);
+    }
   } finally {
     sendActivity(userId, false);
   }
@@ -679,6 +715,15 @@ async function updateSettings(payload, userId) {
   scheduleRosterTimer(userId, state);
   await sendState(userId, state, directory);
 }
+async function resetTimeline(userId) {
+  const [currentState, directory] = await Promise.all([loadState(userId), loadDirectory(userId)]);
+  const state = createEmptyTimelineState();
+  state.settings = currentState.settings;
+  await saveState(state, userId);
+  scheduleRosterTimer(userId, state);
+  sendActivity(userId, false);
+  await sendState(userId, state, directory);
+}
 async function toggleRosterActor(payload, userId) {
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)]);
   const actor = getReplyActor(directory, payload.actorKey);
@@ -780,6 +825,9 @@ async function handleMessage(payload, userId) {
       return;
     case "update_settings":
       await enqueue(userId, () => updateSettings(payload, userId));
+      return;
+    case "reset_timeline":
+      await enqueue(userId, () => resetTimeline(userId));
       return;
     case "toggle_roster_actor":
       await enqueue(userId, () => toggleRosterActor(payload, userId));
