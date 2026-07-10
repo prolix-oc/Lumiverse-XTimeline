@@ -328,12 +328,6 @@ function setup(ctx) {
     textarea.placeholder = replyTarget ? `Reply to @${replyTarget.author.handle}…` : "What is happening in your Lumiverse?";
     textarea.value = draft;
     textarea.disabled = busy;
-    textarea.addEventListener("input", () => {
-      draft = textarea.value.slice(0, MAX_WEAVE_LENGTH);
-      const counter = root.querySelector(".xtl-counter");
-      if (counter)
-        counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`;
-    });
     const writingRow = createElement("div", "xtl-composer-writing");
     const persona = selectedPersona();
     writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea);
@@ -372,6 +366,14 @@ function setup(ctx) {
     }
     const weave = button(inviteActorKey ? "Weave + invite" : "Weave", "xtl-button xtl-button--primary");
     weave.disabled = busy || !draft.trim();
+    const syncComposerControls = () => {
+      draft = textarea.value.slice(0, MAX_WEAVE_LENGTH);
+      const counter = root.querySelector(".xtl-counter");
+      if (counter)
+        counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`;
+      weave.disabled = busy || !draft.trim();
+    };
+    textarea.addEventListener("input", syncComposerControls);
     weave.addEventListener("click", () => {
       const persona2 = selectedPersona();
       pendingDraft = { text: draft, replyToId, chatSource };
