@@ -862,6 +862,27 @@ function setup(ctx) {
     intervalInputs.append(minimum, document.createTextNode("to"), maximum, document.createTextNode("min"));
     intervalRow.append(intervalLabels, intervalInputs);
     details.appendChild(intervalRow);
+    const gifChanceRow = createElement("div", "xtl-settings-row");
+    const gifChanceLabels = createElement("div");
+    gifChanceLabels.append(createElement("div", "xtl-settings-label", "GIF Attachment Chance"), createElement("div", "xtl-settings-hint", "How often models attach a GIF to their weaves."));
+    const gifChanceInputWrap = createElement("div", "xtl-interval-inputs");
+    const gifChanceInput = createElement("input", "xtl-number-input");
+    gifChanceInput.type = "number";
+    gifChanceInput.min = "0";
+    gifChanceInput.max = "100";
+    gifChanceInput.value = String(state.state.settings.gifChance ?? 35);
+    gifChanceInput.disabled = busy;
+    gifChanceInput.addEventListener("change", () => {
+      const val = Math.max(0, Math.min(100, Math.round(Number(gifChanceInput.value) || 0)));
+      gifChanceInput.value = String(val);
+      send({
+        type: "update_settings",
+        gifChance: val
+      });
+    });
+    gifChanceInputWrap.append(gifChanceInput, document.createTextNode("%"));
+    gifChanceRow.append(gifChanceLabels, gifChanceInputWrap);
+    details.appendChild(gifChanceRow);
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
     resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, threads, and roster invitations. Your persona, sidecar, and cadence settings stay saved."));

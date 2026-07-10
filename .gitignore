@@ -5,3 +5,4 @@ test_gif_regex.js
 test_giphy.js
 test_tenor_api.js
 test_tenor.js
+test_gif_fetch.js

@@ -48,6 +48,7 @@ export interface TimelineSettings {
   sidecarConnectionId: string | null
   minActorWeaveIntervalMinutes: number
   maxActorWeaveIntervalMinutes: number
+  gifChance?: number
 }
 
 export interface TimelineState {
@@ -86,6 +87,7 @@ export function createEmptyTimelineState(): TimelineState {
       sidecarConnectionId: null,
       minActorWeaveIntervalMinutes: 30,
       maxActorWeaveIntervalMinutes: 120,
+      gifChance: 35,
     },
   }
 }
