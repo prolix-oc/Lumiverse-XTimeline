@@ -1,4 +1,4 @@
-import type { SpindleFrontendContext } from 'lumiverse-spindle-types'
+import type { SpindleFrontendContext, SpindleSelectHandle } from 'lumiverse-spindle-types'
 import {
   MAX_WEAVE_LENGTH,
   REACTION_EMOJIS,
@@ -68,6 +68,35 @@ function relativeTime(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(timestamp))
 }
 
+function actorMatchesSearch(actor: TimelineActor, query: string): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return true
+  return [actor.name, actor.handle, actor.bio, actor.role]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLocaleLowerCase()
+    .includes(normalizedQuery)
+}
+
+function actorLeading(actor: TimelineActor) {
+  if (actor.avatarUrl) {
+    return {
+      type: 'image' as const,
+      src: actor.avatarUrl,
+      rounded: true,
+      fallback: {
+        text: initials(actor.name),
+        background: 'var(--lumiverse-fill-subtle)',
+      },
+    }
+  }
+  return {
+    type: 'initial' as const,
+    text: initials(actor.name),
+    background: 'var(--lumiverse-fill-subtle)',
+  }
+}
+
 function actorAvatar(actor: TimelineActor, size = 'normal'): HTMLElement {
   const holder = createElement('div', `xtl-avatar xtl-avatar--${size}`)
   holder.title = actor.name
@@ -125,6 +154,8 @@ export function setup(ctx: SpindleFrontendContext) {
   let busyActorName: string | null = null
   let error = ''
   let pendingDraft: { text: string; replyToId: string | null; chatSource: TimelineChatSource | null } | null = null
+  let actorSearch = ''
+  let personaPicker: SpindleSelectHandle | null = null
 
   const tab = ctx.ui.registerDrawerTab({
     id: 'timeline',
@@ -149,6 +180,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-composer-top { justify-content: space-between; margin-bottom: 10px; }
     .xtl-composer-writing { display: flex; align-items: flex-start; gap: 11px; }
     .xtl-composer-writing .xtl-textarea { flex: 1; }
+    .xtl-persona-picker { min-width: 250px; }
     .xtl-composer-label { color: #d9e3ec; font-size: 13px; font-weight: 700; }
     .xtl-compose-context { color: var(--xtl-muted); font-size: 12px; margin: 0 0 9px; }
     .xtl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; background: var(--xtl-blue-soft); color: #b9e0ff; font-size: 11px; font-weight: 650; }
@@ -193,6 +225,10 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
     .xtl-section-title { margin: 0; font-size: 15px; letter-spacing: -.015em; }
+    .xtl-actor-search-wrap { margin-top: 12px; }
+    .xtl-actor-search { display: block; width: 100%; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 999px; background: #0a0d11; color: #f4f7fa; padding: 9px 13px; font: inherit; font-size: 12px; outline: none; }
+    .xtl-actor-search::placeholder { color: #75808c; }
+    .xtl-actor-search:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); }
     .xtl-roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 12px; }
     .xtl-roster-empty, .xtl-roster-access { grid-column: 1 / -1; margin: 2px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; }
     .xtl-roster-access { margin-top: 10px; }
@@ -208,7 +244,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-settings-label { font-size: 13px; font-weight: 750; }
     .xtl-settings-hint { color: var(--xtl-muted); font-size: 11px; max-width: 240px; line-height: 1.4; margin-top: 3px; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source { margin-left: 0; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } }
+    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source { margin-left: 0; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } }
   `)
 
   const selectedPersona = (): TimelineActor | null => {
@@ -256,23 +292,28 @@ export function setup(ctx: SpindleFrontendContext) {
     const card = createElement('section', 'xtl-card xtl-composer')
     const top = createElement('div', 'xtl-composer-top')
     const title = createElement('div', 'xtl-composer-label', selectedReplyTarget() ? 'Reply as' : 'Weave as')
-    const personaSelect = document.createElement('select')
-    personaSelect.className = 'xtl-select'
-    personaSelect.setAttribute('aria-label', 'Timeline persona')
-    const fallbackOption = document.createElement('option')
-    fallbackOption.value = ''
-    fallbackOption.textContent = state.personas.length ? 'Choose persona…' : 'You'
-    personaSelect.appendChild(fallbackOption)
-    for (const persona of state.personas) {
-      const option = document.createElement('option')
-      option.value = persona.sourceId
-      option.textContent = `${persona.name} @${persona.handle}`
-      personaSelect.appendChild(option)
-    }
-    personaSelect.value = selectedPersona()?.sourceId ?? ''
-    personaSelect.addEventListener('change', () => send({ type: 'update_settings', selectedPersonaId: personaSelect.value || null }))
-    top.append(title, personaSelect)
+    const personaPickerSlot = createElement('div', 'xtl-persona-picker')
+    top.append(title, personaPickerSlot)
     card.appendChild(top)
+
+    personaPicker = ctx.components.mountSelect(personaPickerSlot, {
+      value: selectedPersona()?.sourceId ?? '',
+      placeholder: state.personas.length ? 'Choose persona…' : 'You',
+      searchPlaceholder: 'Search personas…',
+      searchThreshold: 0,
+      emptyMessage: 'No personas are available.',
+      noResultsMessage: 'No personas match your search.',
+      ariaLabel: 'Timeline persona',
+      align: 'right',
+      minWidth: 250,
+      options: state.personas.map((persona) => ({
+        value: persona.sourceId,
+        label: `${persona.name} @${persona.handle}`,
+        sublabel: persona.bio || 'Timeline persona',
+        leading: actorLeading(persona),
+      })),
+      onChange: (personaId) => send({ type: 'update_settings', selectedPersonaId: personaId || null }),
+    })
 
     const replyTarget = selectedReplyTarget()
     if (replyTarget) {
@@ -451,25 +492,55 @@ export function setup(ctx: SpindleFrontendContext) {
     card.appendChild(header)
     const list = createElement('div', 'xtl-roster-list')
     let accessHint = ''
-    for (const actor of state.replyActors.slice(0, 18)) {
-      const item = createElement('div', 'xtl-actor-card')
-      const details = createElement('div', 'xtl-actor-card-info')
-      details.append(
-        createElement('div', 'xtl-actor-card-name', actor.name),
-        createElement('div', 'xtl-actor-card-meta', actor.role ?? actor.bio),
-      )
-      const weave = button('Weave', 'xtl-button')
-      weave.disabled = busy || !state.permissions.includes('generation')
-      weave.addEventListener('click', () => {
-        busy = true
-        busyActorName = actor.name
-        render()
-        send({ type: 'create_actor_weave', actorKey: actor.key })
+    if (state.replyActors.length) {
+      const searchWrap = createElement('div', 'xtl-actor-search-wrap')
+      const search = document.createElement('input')
+      search.type = 'search'
+      search.className = 'xtl-actor-search'
+      search.placeholder = 'Search actors by name, handle, role, or card…'
+      search.value = actorSearch
+      search.setAttribute('aria-label', 'Search actors to invite')
+      searchWrap.appendChild(search)
+      card.appendChild(searchWrap)
+
+      const actorRows: Array<{ actor: TimelineActor; item: HTMLDivElement }> = []
+      for (const actor of state.replyActors) {
+        const item = createElement('div', 'xtl-actor-card')
+        const details = createElement('div', 'xtl-actor-card-info')
+        details.append(
+          createElement('div', 'xtl-actor-card-name', actor.name),
+          createElement('div', 'xtl-actor-card-meta', `@${actor.handle} · ${actor.role ?? actor.bio}`),
+        )
+        const weave = button('Weave', 'xtl-button')
+        weave.disabled = busy || !state.permissions.includes('generation')
+        weave.addEventListener('click', () => {
+          busy = true
+          busyActorName = actor.name
+          render()
+          send({ type: 'create_actor_weave', actorKey: actor.key })
+        })
+        item.append(actorAvatar(actor, 'small'), details, weave)
+        list.appendChild(item)
+        actorRows.push({ actor, item })
+      }
+
+      const noMatches = createElement('p', 'xtl-roster-empty', 'No actors match that search.')
+      list.appendChild(noMatches)
+      const applySearch = () => {
+        let matchCount = 0
+        for (const row of actorRows) {
+          const matches = actorMatchesSearch(row.actor, actorSearch)
+          row.item.hidden = !matches
+          if (matches) matchCount += 1
+        }
+        noMatches.hidden = matchCount > 0
+      }
+      search.addEventListener('input', () => {
+        actorSearch = search.value
+        applySearch()
       })
-      item.append(actorAvatar(actor, 'small'), details, weave)
-      list.appendChild(item)
-    }
-    if (!state.replyActors.length) {
+      applySearch()
+    } else {
       const missingCharacterPermission = !state.permissions.includes('characters')
       list.appendChild(createElement(
         'p',
@@ -478,7 +549,8 @@ export function setup(ctx: SpindleFrontendContext) {
           ? 'Character-card access is not enabled for Timeline. Grant the Characters permission in Extensions, then refresh. Council members will appear here once they are added to your Council.'
           : 'No character cards or active Council members are available for this account yet. Add one, then refresh this timeline.',
       ))
-    } else if (!state.permissions.includes('characters')) {
+    }
+    if (state.replyActors.length && !state.permissions.includes('characters')) {
       accessHint = 'Character-card access is not enabled, so this list currently shows Council members only.'
     }
     card.appendChild(list)
@@ -538,6 +610,8 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   const render = () => {
+    personaPicker?.destroy()
+    personaPicker = null
     root.replaceChildren(renderHeader())
     const renderedError = renderError()
     if (renderedError) root.appendChild(renderedError)
@@ -614,6 +688,8 @@ export function setup(ctx: SpindleFrontendContext) {
   ctx.ready()
 
   return () => {
+    personaPicker?.destroy()
+    personaPicker = null
     unsubscribeMessages()
     unsubscribeInputAction()
     unsubscribeActivate()
