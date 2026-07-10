@@ -27,7 +27,7 @@ function now() {
   return Date.now();
 }
 function storageUserKey(userId) {
-  return userId ?? "extension-owner";
+  return userId;
 }
 function errorMessage(error) {
   if (error instanceof Error)
@@ -439,12 +439,12 @@ ${context}`
     }
   ];
 }
-async function resolveChatSource(chatId, directory) {
+async function resolveChatSource(chatId, directory, userId) {
   if (typeof chatId !== "string")
     return;
   if (!spindle.permissions.has("chats"))
     return;
-  const chat = await spindle.chats.get(chatId);
+  const chat = await spindle.chats.get(chatId, userId);
   if (!chat)
     return;
   const character = directory.replyActors.find((actor) => actor.kind === "character" && actor.sourceId === chat.character_id);
@@ -461,7 +461,7 @@ async function createUserWeave(payload, userId) {
     throw new Error("Write something before weaving.");
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)]);
   const replyTo = typeof payload.replyToId === "string" ? getPost(state, payload.replyToId) : null;
-  const chatSource = await resolveChatSource(payload.chatId, directory);
+  const chatSource = await resolveChatSource(payload.chatId, directory, userId);
   const author = getPersonaAuthor(directory, payload.personaId, state.settings);
   const source = chatSource ? "chat_share" : "manual";
   state.posts.unshift(createPost({ author, content, replyTo, source, chatSource }));
@@ -634,6 +634,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
 });
 for (const event of ["PERSONA_CHANGED", "CHARACTER_EDITED", "CHARACTER_DELETED", "CONNECTION_PROFILE_LOADED"]) {
   spindle.on(event, (_payload, userId) => {
+    if (!userId)
+      return;
     sendState(userId).catch((error) => spindle.log.warn(`Timeline refresh failed: ${errorMessage(error)}`));
   });
 }

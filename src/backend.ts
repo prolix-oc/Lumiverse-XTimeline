@@ -47,8 +47,8 @@ function now(): number {
   return Date.now()
 }
 
-function storageUserKey(userId?: string): string {
-  return userId ?? 'extension-owner'
+function storageUserKey(userId: string): string {
+  return userId
 }
 
 function errorMessage(error: unknown): string {
@@ -168,7 +168,7 @@ async function attempt<T>(label: string, fallback: T, work: () => Promise<T>): P
   }
 }
 
-async function resolveAvatarUrls(imageIds: Array<string | null>, userId?: string): Promise<Map<string, string>> {
+async function resolveAvatarUrls(imageIds: Array<string | null>, userId: string): Promise<Map<string, string>> {
   const uniqueIds = [...new Set(imageIds.filter((id): id is string => Boolean(id)))]
   const resolved = new Map<string, string>()
   if (uniqueIds.length === 0 || !spindle.permissions.has('images')) return resolved
@@ -180,7 +180,7 @@ async function resolveAvatarUrls(imageIds: Array<string | null>, userId?: string
   return resolved
 }
 
-async function loadDirectory(userId?: string): Promise<TimelineDirectory> {
+async function loadDirectory(userId: string): Promise<TimelineDirectory> {
   const canUsePersonas = spindle.permissions.has('personas')
   const canUseCharacters = spindle.permissions.has('characters')
   const canUseGeneration = spindle.permissions.has('generation')
@@ -300,7 +300,7 @@ function normalizeState(value: unknown): TimelineState {
   }
 }
 
-async function loadState(userId?: string): Promise<TimelineState> {
+async function loadState(userId: string): Promise<TimelineState> {
   const stored = await spindle.userStorage.getJson<unknown>(TIMELINE_STORAGE_PATH, {
     fallback: createEmptyTimelineState(),
     userId,
@@ -308,7 +308,7 @@ async function loadState(userId?: string): Promise<TimelineState> {
   return normalizeState(stored)
 }
 
-async function saveState(state: TimelineState, userId?: string): Promise<void> {
+async function saveState(state: TimelineState, userId: string): Promise<void> {
   await spindle.userStorage.setJson(TIMELINE_STORAGE_PATH, state, { indent: 2, userId })
 }
 
@@ -325,7 +325,7 @@ function makeSnapshot(state: TimelineState, directory: TimelineDirectory): Timel
   }
 }
 
-async function sendState(userId?: string, state?: TimelineState, directory?: TimelineDirectory): Promise<void> {
+async function sendState(userId: string, state?: TimelineState, directory?: TimelineDirectory): Promise<void> {
   const [nextState, nextDirectory] = await Promise.all([
     state ? Promise.resolve(state) : loadState(userId),
     directory ? Promise.resolve(directory) : loadDirectory(userId),
@@ -333,14 +333,14 @@ async function sendState(userId?: string, state?: TimelineState, directory?: Tim
   spindle.sendToFrontend({ type: 'timeline_state', snapshot: makeSnapshot(nextState, nextDirectory) }, userId)
 }
 
-function sendError(userId: string | undefined, error: unknown): void {
+function sendError(userId: string, error: unknown): void {
   spindle.sendToFrontend({
     type: 'timeline_error',
     message: errorMessage(error).replace(/^PERMISSION_DENIED:\s*/i, 'Permission required: '),
   }, userId)
 }
 
-function sendActivity(userId: string | undefined, active: boolean, actorName?: string): void {
+function sendActivity(userId: string, active: boolean, actorName?: string): void {
   spindle.sendToFrontend({ type: 'timeline_activity', active, actorName: actorName ?? null }, userId)
 }
 
@@ -514,10 +514,10 @@ function chatSummaryMessages(chatName: string, characterName: string | null, con
   ]
 }
 
-async function resolveChatSource(chatId: unknown, directory: TimelineDirectory): Promise<TimelineChatSource | undefined> {
+async function resolveChatSource(chatId: unknown, directory: TimelineDirectory, userId: string): Promise<TimelineChatSource | undefined> {
   if (typeof chatId !== 'string') return undefined
   if (!spindle.permissions.has('chats')) return undefined
-  const chat = await spindle.chats.get(chatId)
+  const chat = await spindle.chats.get(chatId, userId)
   if (!chat) return undefined
   const character = directory.replyActors.find((actor) => actor.kind === 'character' && actor.sourceId === chat.character_id)
   return {
@@ -528,13 +528,13 @@ async function resolveChatSource(chatId: unknown, directory: TimelineDirectory):
   }
 }
 
-async function createUserWeave(payload: UnknownRecord, userId?: string): Promise<void> {
+async function createUserWeave(payload: UnknownRecord, userId: string): Promise<void> {
   const content = cleanWeave(stringValue(payload.content))
   if (!content) throw new Error('Write something before weaving.')
 
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const replyTo = typeof payload.replyToId === 'string' ? getPost(state, payload.replyToId) : null
-  const chatSource = await resolveChatSource(payload.chatId, directory)
+  const chatSource = await resolveChatSource(payload.chatId, directory, userId)
   const author = getPersonaAuthor(directory, payload.personaId, state.settings)
   const source: TimelinePost['source'] = chatSource ? 'chat_share' : 'manual'
   state.posts.unshift(createPost({ author, content, replyTo, source, chatSource }))
@@ -552,7 +552,7 @@ async function createActorReply(
   directory: TimelineDirectory,
   target: TimelinePost,
   actorKey: unknown,
-  userId?: string,
+  userId: string,
 ): Promise<void> {
   const actor = getReplyActor(directory, actorKey)
   sendActivity(userId, true, actor.name)
@@ -567,13 +567,13 @@ async function createActorReply(
   }
 }
 
-async function inviteReply(payload: UnknownRecord, userId?: string): Promise<void> {
+async function inviteReply(payload: UnknownRecord, userId: string): Promise<void> {
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const post = getPost(state, payload.postId)
   await createActorReply(state, directory, post, payload.actorKey, userId)
 }
 
-async function createActorWeave(payload: UnknownRecord, userId?: string): Promise<void> {
+async function createActorWeave(payload: UnknownRecord, userId: string): Promise<void> {
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const actor = getReplyActor(directory, payload.actorKey)
   sendActivity(userId, true, actor.name)
@@ -588,7 +588,7 @@ async function createActorWeave(payload: UnknownRecord, userId?: string): Promis
   }
 }
 
-async function toggleReaction(payload: UnknownRecord, userId?: string): Promise<void> {
+async function toggleReaction(payload: UnknownRecord, userId: string): Promise<void> {
   const emoji = stringValue(payload.emoji)
   if (!REACTION_EMOJIS.includes(emoji as (typeof REACTION_EMOJIS)[number])) throw new Error('That reaction is not available.')
   const state = await loadState(userId)
@@ -606,7 +606,7 @@ async function toggleReaction(payload: UnknownRecord, userId?: string): Promise<
   await sendState(userId, state)
 }
 
-async function updateSettings(payload: UnknownRecord, userId?: string): Promise<void> {
+async function updateSettings(payload: UnknownRecord, userId: string): Promise<void> {
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const requestedPersonaId = payload.selectedPersonaId
   if (requestedPersonaId === null || typeof requestedPersonaId === 'string') {
@@ -628,7 +628,7 @@ async function updateSettings(payload: UnknownRecord, userId?: string): Promise<
   await sendState(userId, state, directory)
 }
 
-async function prepareChatWeave(userId?: string): Promise<void> {
+async function prepareChatWeave(userId: string): Promise<void> {
   if (!spindle.permissions.has('chats') || !spindle.permissions.has('chat_mutation')) {
     throw new Error('Chat access is required to weave about the current chat.')
   }
@@ -671,7 +671,7 @@ async function prepareChatWeave(userId?: string): Promise<void> {
   }
 }
 
-function enqueue<T>(userId: string | undefined, work: () => Promise<T>): Promise<T> {
+function enqueue<T>(userId: string, work: () => Promise<T>): Promise<T> {
   const key = storageUserKey(userId)
   const previous = queuedWork.get(key) ?? Promise.resolve()
   const next = previous.catch(() => undefined).then(work)
@@ -682,7 +682,7 @@ function enqueue<T>(userId: string | undefined, work: () => Promise<T>): Promise
   return next
 }
 
-async function handleMessage(payload: unknown, userId?: string): Promise<void> {
+async function handleMessage(payload: unknown, userId: string): Promise<void> {
   if (!isRecord(payload) || typeof payload.type !== 'string') return
   switch (payload.type) {
     case 'load_timeline':
@@ -726,6 +726,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
 
 for (const event of ['PERSONA_CHANGED', 'CHARACTER_EDITED', 'CHARACTER_DELETED', 'CONNECTION_PROFILE_LOADED']) {
   spindle.on(event, (_payload, userId) => {
+    if (!userId) return
     void sendState(userId).catch((error) => spindle.log.warn(`Timeline refresh failed: ${errorMessage(error)}`))
   })
 }
