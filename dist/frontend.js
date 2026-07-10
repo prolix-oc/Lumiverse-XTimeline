@@ -450,12 +450,28 @@ function setup(ctx) {
     const controls = createElement("div", "xtl-composer-controls");
     const actions = createElement("div", "xtl-composer-actions");
     const chatButton = button("Weave current chat");
-    chatButton.disabled = busy || !state.permissions.includes("chats") || !state.permissions.includes("chat_mutation");
+    chatButton.disabled = busy || !draft.trim() || !state.permissions.includes("chats") || !state.permissions.includes("chat_mutation");
     chatButton.addEventListener("click", () => {
+      const persona2 = selectedPersona();
+      const invitedActorKey = inviteActorKey;
+      const mentionedKeys = [...mentionedActorKeys];
+      pendingDraft = { text: draft, replyToId, chatSource, inviteActorKey: invitedActorKey, mentionedActorKeys: mentionedKeys };
+      const payload = {
+        type: "weave_current_chat",
+        content: draft,
+        personaId: persona2?.sourceId ?? null,
+        replyToId,
+        inviteActorKey: invitedActorKey,
+        mentionedActorKeys: mentionedKeys
+      };
+      draft = "";
+      replyToId = null;
+      chatSource = null;
+      mentionedActorKeys = [];
       busy = true;
       busyActorName = "current chat";
       render();
-      send({ type: "weave_current_chat" });
+      send(payload);
     });
     actions.appendChild(chatButton);
     let inviteSelect = null;
@@ -570,6 +586,7 @@ function setup(ctx) {
       if (counter)
         counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`;
       weave.disabled = busy || !draft.trim();
+      chatButton.disabled = busy || !draft.trim() || !state.permissions.includes("chats") || !state.permissions.includes("chat_mutation");
       updateWeaveLabel();
       renderMentionStack();
       updateMentionPopover();
@@ -1012,10 +1029,7 @@ function setup(ctx) {
   });
   const unsubscribeInputAction = inputAction.onClick(() => {
     tab.activate();
-    busy = true;
-    busyActorName = "current chat";
-    render();
-    send({ type: "weave_current_chat" });
+    focusComposer();
   });
   const unsubscribeActivate = tab.onActivate(() => send({ type: "load_timeline" }));
   render();

@@ -743,10 +743,12 @@ async function createUserWeave(payload, userId) {
   ];
   const mentionedActors = [...new Set(mentionedActorKeys)].map((actorKey) => directory.replyActors.find((actor) => actor.key === actorKey)).filter((actor) => Boolean(actor));
   const invitedActor = invitedActorKey ? directory.replyActors.find((actor) => actor.key === invitedActorKey) ?? null : null;
+  const autoReplyActor = typeof payload.autoReplyActorKey === "string" ? directory.replyActors.find((actor) => actor.key === payload.autoReplyActorKey) ?? null : null;
   const replyActors = uniqueShuffledActors([
     ...replyingActor ? [replyingActor] : [],
     ...mentionedActors,
-    ...invitedActor ? [invitedActor] : []
+    ...invitedActor ? [invitedActor] : [],
+    ...autoReplyActor ? [autoReplyActor] : []
   ]);
   if (replyActors.length) {
     await createActorReplies(state, directory, userPost, replyActors, userId);
@@ -946,55 +948,20 @@ async function toggleRosterActor(payload, userId) {
   scheduleRosterTimer(userId, state);
   await sendState(userId, state, directory);
 }
-async function weaveCurrentChat(userId) {
+async function weaveCurrentChat(payload, userId) {
   if (!spindle.permissions.has("chats") || !spindle.permissions.has("chat_mutation")) {
     throw new Error("Chat access is required to weave about the current chat.");
   }
   const chat = await spindle.chats.getActive(userId);
   if (!chat)
     throw new Error("Open a chat before using \u201CWeave current chat\u201D.");
-  const [state, directory, messages] = await Promise.all([
-    loadState(userId),
-    loadDirectory(userId),
-    spindle.chat.getMessages(chat.id)
-  ]);
+  const directory = await loadDirectory(userId);
   const character = directory.replyActors.find((actor) => actor.kind === "character" && actor.sourceId === chat.character_id);
-  const source = {
-    kind: "chat",
+  await createUserWeave({
+    ...payload,
     chatId: chat.id,
-    chatName: chat.name || "Current chat",
-    characterName: character?.name ?? null
-  };
-  const excerpt = chatExcerpt(messages, character?.name ?? null, state.settings.chatContextMessageCount);
-  const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
-  if (!latestUserMessage)
-    throw new Error("Add a message to the current chat before weaving it.");
-  const content = stripChatHtml(latestUserMessage.content).trim();
-  if (!content)
-    throw new Error("The latest user message contains no plain text to weave.");
-  if (content.length > MAX_WEAVE_LENGTH) {
-    throw new Error(`The latest user message is longer than the ${MAX_WEAVE_LENGTH}-character timeline limit.`);
-  }
-  sendActivity(userId, true, "current chat");
-  try {
-    const chatContext = state.settings.includeChatContext ? { messageCount: state.settings.chatContextMessageCount, excerpt } : undefined;
-    const userPost = createPost({
-      author: getPersonaAuthor(directory, null, state.settings),
-      content,
-      source: "chat_share",
-      chatSource: source,
-      chatContext
-    });
-    state.posts.unshift(userPost);
-    state.posts = prunePosts(state.posts);
-    await saveState(state, userId);
-    await sendState(userId, state, directory);
-    if (character && spindle.permissions.has("generation") && state.settings.sidecarConnectionId) {
-      await createActorReplies(state, directory, userPost, [character], userId);
-    }
-  } finally {
-    sendActivity(userId, false);
-  }
+    ...character ? { autoReplyActorKey: character.key } : {}
+  }, userId);
 }
 function enqueue(userId, work) {
   const key = storageUserKey(userId);
@@ -1045,7 +1012,7 @@ async function handleMessage(payload, userId) {
       return;
     case "weave_current_chat":
     case "prepare_chat_weave":
-      await enqueue(userId, () => weaveCurrentChat(userId));
+      await enqueue(userId, () => weaveCurrentChat(payload, userId));
       return;
     case "open_connections":
       await spindle.ui.openDrawerTab("connections", { userId });
