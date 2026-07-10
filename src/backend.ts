@@ -168,43 +168,43 @@ async function attempt<T>(label: string, fallback: T, work: () => Promise<T>): P
   }
 }
 
-async function resolveAvatarUrls(imageIds: Array<string | null>): Promise<Map<string, string>> {
+async function resolveAvatarUrls(imageIds: Array<string | null>, userId?: string): Promise<Map<string, string>> {
   const uniqueIds = [...new Set(imageIds.filter((id): id is string => Boolean(id)))]
   const resolved = new Map<string, string>()
   if (uniqueIds.length === 0 || !spindle.permissions.has('images')) return resolved
 
   await Promise.all(uniqueIds.map(async (imageId) => {
-    const image = await attempt(`avatar ${imageId}`, null, () => spindle.images.get(imageId, { specificity: 'sm' }))
+    const image = await attempt(`avatar ${imageId}`, null, () => spindle.images.get(imageId, { specificity: 'sm', userId }))
     if (image?.url) resolved.set(imageId, image.url)
   }))
   return resolved
 }
 
-async function loadDirectory(): Promise<TimelineDirectory> {
+async function loadDirectory(userId?: string): Promise<TimelineDirectory> {
   const canUsePersonas = spindle.permissions.has('personas')
   const canUseCharacters = spindle.permissions.has('characters')
   const canUseGeneration = spindle.permissions.has('generation')
 
   const [personaResult, activePersona, characterResult, councilMembers, connectionRows] = await Promise.all([
     canUsePersonas
-      ? attempt('personas', { data: [], total: 0 }, () => spindle.personas.list({ limit: 200 }))
+      ? attempt('personas', { data: [], total: 0 }, () => spindle.personas.list({ limit: 200, userId }))
       : Promise.resolve({ data: [] as PersonaDTO[], total: 0 }),
     canUsePersonas
-      ? attempt('active persona', null, () => spindle.personas.getActive())
+      ? attempt('active persona', null, () => spindle.personas.getActive(userId))
       : Promise.resolve(null),
     canUseCharacters
-      ? attempt('character cards', { data: [], total: 0 }, () => spindle.characters.list({ limit: 200 }))
+      ? attempt('character cards', { data: [], total: 0 }, () => spindle.characters.list({ limit: 200, userId }))
       : Promise.resolve({ data: [] as CharacterDTO[], total: 0 }),
-    attempt('Council members', [] as CouncilMemberContext[], () => spindle.council.getMembers()),
+    attempt('Council members', [] as CouncilMemberContext[], () => spindle.council.getMembers({ userId })),
     canUseGeneration
-      ? attempt('connection profiles', [] as ConnectionProfileDTO[], () => spindle.connections.list())
+      ? attempt('connection profiles', [] as ConnectionProfileDTO[], () => spindle.connections.list(userId))
       : Promise.resolve([] as ConnectionProfileDTO[]),
   ])
 
   const avatarUrls = await resolveAvatarUrls([
     ...personaResult.data.map((persona) => persona.image_id),
     ...characterResult.data.map((character) => character.image_id),
-  ])
+  ], userId)
 
   const personas = personaResult.data.map((persona) => makePersonaActor(persona, avatarUrls.get(persona.image_id ?? '') ?? null))
   const characters = characterResult.data.map((character) => makeCharacterActor(character, avatarUrls.get(character.image_id ?? '') ?? null))
@@ -328,7 +328,7 @@ function makeSnapshot(state: TimelineState, directory: TimelineDirectory): Timel
 async function sendState(userId?: string, state?: TimelineState, directory?: TimelineDirectory): Promise<void> {
   const [nextState, nextDirectory] = await Promise.all([
     state ? Promise.resolve(state) : loadState(userId),
-    directory ? Promise.resolve(directory) : loadDirectory(),
+    directory ? Promise.resolve(directory) : loadDirectory(userId),
   ])
   spindle.sendToFrontend({ type: 'timeline_state', snapshot: makeSnapshot(nextState, nextDirectory) }, userId)
 }
@@ -532,7 +532,7 @@ async function createUserWeave(payload: UnknownRecord, userId?: string): Promise
   const content = cleanWeave(stringValue(payload.content))
   if (!content) throw new Error('Write something before weaving.')
 
-  const [state, directory] = await Promise.all([loadState(userId), loadDirectory()])
+  const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const replyTo = typeof payload.replyToId === 'string' ? getPost(state, payload.replyToId) : null
   const chatSource = await resolveChatSource(payload.chatId, directory)
   const author = getPersonaAuthor(directory, payload.personaId, state.settings)
@@ -568,13 +568,13 @@ async function createActorReply(
 }
 
 async function inviteReply(payload: UnknownRecord, userId?: string): Promise<void> {
-  const [state, directory] = await Promise.all([loadState(userId), loadDirectory()])
+  const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const post = getPost(state, payload.postId)
   await createActorReply(state, directory, post, payload.actorKey, userId)
 }
 
 async function createActorWeave(payload: UnknownRecord, userId?: string): Promise<void> {
-  const [state, directory] = await Promise.all([loadState(userId), loadDirectory()])
+  const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const actor = getReplyActor(directory, payload.actorKey)
   sendActivity(userId, true, actor.name)
   try {
@@ -607,7 +607,7 @@ async function toggleReaction(payload: UnknownRecord, userId?: string): Promise<
 }
 
 async function updateSettings(payload: UnknownRecord, userId?: string): Promise<void> {
-  const [state, directory] = await Promise.all([loadState(userId), loadDirectory()])
+  const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   const requestedPersonaId = payload.selectedPersonaId
   if (requestedPersonaId === null || typeof requestedPersonaId === 'string') {
     state.settings.selectedPersonaId = typeof requestedPersonaId === 'string'
@@ -632,12 +632,12 @@ async function prepareChatWeave(userId?: string): Promise<void> {
   if (!spindle.permissions.has('chats') || !spindle.permissions.has('chat_mutation')) {
     throw new Error('Chat access is required to weave about the current chat.')
   }
-  const chat = await spindle.chats.getActive()
+  const chat = await spindle.chats.getActive(userId)
   if (!chat) throw new Error('Open a chat before using “Weave current chat”.')
 
   const [state, directory, messages] = await Promise.all([
     loadState(userId),
-    loadDirectory(),
+    loadDirectory(userId),
     spindle.chat.getMessages(chat.id),
   ])
   const character = directory.replyActors.find((actor) => actor.kind === 'character' && actor.sourceId === chat.character_id)
@@ -705,6 +705,9 @@ async function handleMessage(payload: unknown, userId?: string): Promise<void> {
       return
     case 'prepare_chat_weave':
       await enqueue(userId, () => prepareChatWeave(userId))
+      return
+    case 'open_connections':
+      await spindle.ui.openDrawerTab('connections', { userId })
       return
     default:
       return

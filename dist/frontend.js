@@ -108,65 +108,76 @@ function setup(ctx) {
   const root = createElement("div", "xtl-app");
   tab.root.replaceChildren(root);
   const removeStyle = ctx.dom.addStyle(`
-    .xtl-app { color: var(--lumiverse-text, #e9edf4); min-height: 100%; padding: 12px; box-sizing: border-box; }
-    .xtl-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-    .xtl-title { margin: 0; font-size: 17px; letter-spacing: -.02em; }
-    .xtl-subtitle { margin: 3px 0 0; color: var(--lumiverse-text-muted, #98a2b3); font-size: 12px; line-height: 1.4; }
-    .xtl-card { background: color-mix(in srgb, var(--lumiverse-fill-subtle, #18202b) 86%, transparent); border: 1px solid var(--lumiverse-border, #334155); border-radius: var(--lumiverse-radius, 12px); margin: 10px 0; overflow: hidden; }
-    .xtl-composer { padding: 12px; }
-    .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 8px; }
-    .xtl-composer-top { justify-content: space-between; margin-bottom: 8px; }
-    .xtl-composer-label { font-size: 12px; color: var(--lumiverse-text-muted, #98a2b3); }
-    .xtl-compose-context { color: var(--lumiverse-text-muted, #98a2b3); font-size: 12px; margin: 0 0 8px; }
-    .xtl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; background: var(--lumiverse-fill, #202a36); color: var(--lumiverse-text-muted, #98a2b3); font-size: 11px; }
-    .xtl-textarea, .xtl-select { background: var(--lumiverse-fill, #202a36); color: var(--lumiverse-text, #e9edf4); border: 1px solid var(--lumiverse-border, #334155); border-radius: calc(var(--lumiverse-radius, 12px) - 3px); box-sizing: border-box; font: inherit; }
-    .xtl-textarea { display: block; width: 100%; min-height: 78px; padding: 9px 10px; resize: vertical; line-height: 1.45; }
-    .xtl-select { max-width: 180px; min-width: 0; padding: 5px 7px; font-size: 12px; }
-    .xtl-composer-controls { justify-content: space-between; margin-top: 9px; flex-wrap: wrap; }
+    .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
+    .xtl-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; margin: 0 -14px 12px; padding: 0 18px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 88%, transparent); border-bottom: 1px solid var(--xtl-line); backdrop-filter: blur(12px); }
+    .xtl-title { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.035em; font-weight: 800; }
+    .xtl-subtitle { margin: 4px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.35; }
+    .xtl-card { background: var(--xtl-surface); border: 1px solid var(--xtl-line); border-radius: 16px; margin: 12px 0; overflow: hidden; box-shadow: 0 10px 26px rgb(0 0 0 / 11%); }
+    .xtl-composer { padding: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--xtl-blue) 10%, var(--xtl-surface)), var(--xtl-surface) 45%); }
+    .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 9px; }
+    .xtl-composer-top { justify-content: space-between; margin-bottom: 10px; }
+    .xtl-composer-writing { display: flex; align-items: flex-start; gap: 11px; }
+    .xtl-composer-writing .xtl-textarea { flex: 1; }
+    .xtl-composer-label { color: #d9e3ec; font-size: 13px; font-weight: 700; }
+    .xtl-compose-context { color: var(--xtl-muted); font-size: 12px; margin: 0 0 9px; }
+    .xtl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; background: var(--xtl-blue-soft); color: #b9e0ff; font-size: 11px; font-weight: 650; }
+    .xtl-textarea, .xtl-select { background: #0a0d11; color: #f4f7fa; border: 1px solid #3a4148; border-radius: 10px; box-sizing: border-box; font: inherit; }
+    .xtl-textarea { display: block; width: 100%; min-height: 104px; padding: 12px; resize: vertical; outline: none; font-size: 15px; line-height: 1.45; }
+    .xtl-textarea::placeholder { color: #75808c; }
+    .xtl-textarea:focus, .xtl-select:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
+    .xtl-select { max-width: 210px; min-width: 0; padding: 7px 30px 7px 10px; font-size: 12px; font-weight: 600; }
+    .xtl-composer-controls { justify-content: space-between; margin-top: 11px; flex-wrap: wrap; }
     .xtl-composer-actions { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
-    .xtl-counter { font-size: 11px; color: var(--lumiverse-text-muted, #98a2b3); }
-    .xtl-button { appearance: none; border: 1px solid var(--lumiverse-border, #334155); border-radius: 8px; background: var(--lumiverse-fill, #202a36); color: var(--lumiverse-text, #e9edf4); padding: 6px 9px; cursor: pointer; font: inherit; font-size: 12px; line-height: 1.15; }
-    .xtl-button:hover:not(:disabled) { border-color: var(--lumiverse-accent, #4fd1c5); color: var(--lumiverse-accent, #4fd1c5); }
-    .xtl-button:disabled { opacity: .48; cursor: not-allowed; }
-    .xtl-button--primary { background: var(--lumiverse-accent, #2fa7a1); border-color: var(--lumiverse-accent, #2fa7a1); color: var(--lumiverse-accent-contrast, #fff); font-weight: 650; }
-    .xtl-button--quiet { background: transparent; border-color: transparent; color: var(--lumiverse-text-muted, #98a2b3); padding: 4px 5px; }
-    .xtl-notice { padding: 8px 10px; background: color-mix(in srgb, #efb35b 14%, var(--lumiverse-fill-subtle, #18202b)); border: 1px solid color-mix(in srgb, #efb35b 48%, var(--lumiverse-border, #334155)); border-radius: 9px; font-size: 12px; line-height: 1.4; margin: 8px 0; }
-    .xtl-notice--error { background: color-mix(in srgb, #e85b75 14%, var(--lumiverse-fill-subtle, #18202b)); border-color: color-mix(in srgb, #e85b75 52%, var(--lumiverse-border, #334155)); }
-    .xtl-post { padding: 11px 12px; }
-    .xtl-post + .xtl-post { border-top: 1px solid var(--lumiverse-border, #334155); }
-    .xtl-post--reply { margin-left: 14px; border-left: 2px solid color-mix(in srgb, var(--lumiverse-accent, #2fa7a1) 42%, transparent); }
+    .xtl-counter { margin-left: auto; font-size: 12px; color: var(--xtl-muted); font-variant-numeric: tabular-nums; }
+    .xtl-button { appearance: none; border: 1px solid #3a4148; border-radius: 999px; background: transparent; color: #dfe8f0; padding: 7px 11px; cursor: pointer; font: inherit; font-size: 12px; line-height: 1.15; font-weight: 700; transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease; }
+    .xtl-button:hover:not(:disabled) { border-color: var(--xtl-blue); color: #eaf6ff; background: var(--xtl-blue-soft); }
+    .xtl-button:active:not(:disabled) { transform: scale(.97); }
+    .xtl-button:disabled { opacity: .42; cursor: not-allowed; }
+    .xtl-button--primary { background: var(--xtl-blue); border-color: var(--xtl-blue); color: #fff; padding-inline: 17px; }
+    .xtl-button--primary:hover:not(:disabled) { background: #1488d4; border-color: #1488d4; color: #fff; }
+    .xtl-button--quiet { border-color: transparent; color: var(--xtl-muted); padding: 6px 8px; }
+    .xtl-notice { padding: 10px 12px; background: color-mix(in srgb, #f5a524 13%, var(--xtl-surface)); border: 1px solid color-mix(in srgb, #f5a524 56%, var(--xtl-line)); border-radius: 12px; font-size: 12px; line-height: 1.45; margin: 10px 0; }
+    .xtl-notice--error { background: color-mix(in srgb, #f4215b 13%, var(--xtl-surface)); border-color: color-mix(in srgb, #f4215b 56%, var(--xtl-line)); }
+    .xtl-post { padding: 15px 16px 12px; transition: background .15s ease; }
+    .xtl-post:hover { background: #131820; }
+    .xtl-post + .xtl-post { border-top: 1px solid var(--xtl-line); }
+    .xtl-post--reply { margin-left: 22px; border-left: 2px solid color-mix(in srgb, var(--xtl-blue) 58%, transparent); }
     .xtl-post-header { align-items: flex-start; }
     .xtl-post-author { min-width: 0; flex: 1; }
     .xtl-post-name-row { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
-    .xtl-post-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
-    .xtl-post-handle, .xtl-post-time { color: var(--lumiverse-text-muted, #98a2b3); font-size: 11px; white-space: nowrap; }
-    .xtl-post-bio { color: var(--lumiverse-text-muted, #98a2b3); font-size: 11px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .xtl-avatar { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: color-mix(in srgb, var(--lumiverse-accent, #2fa7a1) 28%, var(--lumiverse-fill, #202a36)); color: var(--lumiverse-text, #e9edf4); font-size: 11px; font-weight: 700; }
-    .xtl-avatar--small { width: 26px; height: 26px; font-size: 9px; }
+    .xtl-post-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
+    .xtl-post-handle, .xtl-post-time { color: var(--xtl-muted); font-size: 12px; white-space: nowrap; }
+    .xtl-post-bio { color: var(--xtl-muted); font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xtl-avatar { flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px; border: 2px solid color-mix(in srgb, var(--xtl-blue) 44%, #45505c); border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #1d9bf0, #7856ff); color: #fff; font-size: 12px; font-weight: 800; }
+    .xtl-avatar--small { width: 32px; height: 32px; font-size: 10px; }
     .xtl-avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .xtl-post-body { margin: 8px 0 9px 42px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.48; }
-    .xtl-post-source { margin: -2px 0 8px 42px; }
-    .xtl-post-actions { margin-left: 40px; flex-wrap: wrap; }
-    .xtl-reaction { min-width: 36px; padding-inline: 7px; }
-    .xtl-reaction--active { color: var(--lumiverse-accent, #4fd1c5); border-color: var(--lumiverse-accent, #4fd1c5); }
-    .xtl-empty { padding: 22px 13px; color: var(--lumiverse-text-muted, #98a2b3); text-align: center; font-size: 13px; line-height: 1.5; }
-    .xtl-roster { padding: 11px 12px; }
+    .xtl-post-body { margin: 8px 0 11px 50px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #f0f4f7; }
+    .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
+    .xtl-post-actions { margin-left: 49px; gap: 8px; flex-wrap: wrap; }
+    .xtl-post-actions .xtl-button { color: var(--xtl-muted); border-color: transparent; padding: 6px 8px; }
+    .xtl-post-actions .xtl-button:hover:not(:disabled) { color: var(--xtl-blue); background: var(--xtl-blue-soft); }
+    .xtl-reaction { min-width: 40px; }
+    .xtl-reaction--active { color: #ff6b9a !important; background: color-mix(in srgb, #ff6b9a 14%, transparent) !important; }
+    .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
+    .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
-    .xtl-section-title { margin: 0; font-size: 13px; }
-    .xtl-roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(144px, 1fr)); gap: 7px; margin-top: 10px; }
-    .xtl-actor-card { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px; border: 1px solid var(--lumiverse-border, #334155); border-radius: 9px; }
+    .xtl-section-title { margin: 0; font-size: 15px; letter-spacing: -.015em; }
+    .xtl-roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 12px; }
+    .xtl-roster-empty, .xtl-roster-access { grid-column: 1 / -1; margin: 2px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; }
+    .xtl-roster-access { margin-top: 10px; }
+    .xtl-actor-card { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px; border: 1px solid #38404a; border-radius: 12px; background: #0c0f13; }
     .xtl-actor-card-info { min-width: 0; flex: 1; }
-    .xtl-actor-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
-    .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lumiverse-text-muted, #98a2b3); font-size: 10px; margin-top: 2px; }
-    .xtl-actor-card .xtl-button { font-size: 10px; padding: 4px 6px; }
-    .xtl-settings { padding: 0 12px 12px; }
-    .xtl-settings summary { cursor: pointer; color: var(--lumiverse-text-muted, #98a2b3); font-size: 12px; padding: 10px 0 7px; }
-    .xtl-settings-copy { color: var(--lumiverse-text-muted, #98a2b3); font-size: 11px; line-height: 1.45; margin: 0 0 8px; }
-    .xtl-settings-row { justify-content: space-between; align-items: flex-start; padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--lumiverse-border, #334155) 70%, transparent); }
-    .xtl-settings-label { font-size: 12px; font-weight: 600; }
-    .xtl-settings-hint { color: var(--lumiverse-text-muted, #98a2b3); font-size: 10px; max-width: 195px; line-height: 1.35; margin-top: 2px; }
-    .xtl-loading { padding: 22px 10px; color: var(--lumiverse-text-muted, #98a2b3); font-size: 13px; }
-    @media (max-width: 420px) { .xtl-app { padding: 9px; } .xtl-post-body, .xtl-post-source { margin-left: 0; } .xtl-post-actions { margin-left: 0; } .xtl-post--reply { margin-left: 7px; } .xtl-composer-top { align-items: flex-start; flex-direction: column; } .xtl-select { max-width: 100%; width: 100%; } }
+    .xtl-actor-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
+    .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 2px; }
+    .xtl-actor-card .xtl-button { color: #9bd7ff; border-color: color-mix(in srgb, var(--xtl-blue) 46%, #39424d); font-size: 11px; padding: 6px 9px; }
+    .xtl-settings { padding: 0 14px 14px; background: #0b0e12; }
+    .xtl-settings summary { cursor: pointer; color: #b8c4cf; font-size: 12px; font-weight: 700; padding: 13px 0 9px; }
+    .xtl-settings-copy { color: var(--xtl-muted); font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
+    .xtl-settings-row { justify-content: space-between; align-items: flex-start; padding-top: 10px; border-top: 1px solid var(--xtl-line); }
+    .xtl-settings-label { font-size: 13px; font-weight: 750; }
+    .xtl-settings-hint { color: var(--xtl-muted); font-size: 11px; max-width: 240px; line-height: 1.4; margin-top: 3px; }
+    .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
+    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source { margin-left: 0; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } }
   `);
   const selectedPersona = () => {
     if (!snapshot)
@@ -217,10 +228,10 @@ function setup(ctx) {
     fallbackOption.value = "";
     fallbackOption.textContent = state.personas.length ? "Choose persona…" : "You";
     personaSelect.appendChild(fallbackOption);
-    for (const persona of state.personas) {
+    for (const persona2 of state.personas) {
       const option = document.createElement("option");
-      option.value = persona.sourceId;
-      option.textContent = `${persona.name} @${persona.handle}`;
+      option.value = persona2.sourceId;
+      option.textContent = `${persona2.name} @${persona2.handle}`;
       personaSelect.appendChild(option);
     }
     personaSelect.value = selectedPersona()?.sourceId ?? "";
@@ -262,7 +273,10 @@ function setup(ctx) {
       if (counter)
         counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`;
     });
-    card.appendChild(textarea);
+    const writingRow = createElement("div", "xtl-composer-writing");
+    const persona = selectedPersona();
+    writingRow.append(persona ? actorAvatar(persona) : createElement("div", "xtl-avatar", "Y"), textarea);
+    card.appendChild(writingRow);
     const controls = createElement("div", "xtl-composer-controls");
     const actions = createElement("div", "xtl-composer-actions");
     const chatButton = button("Weave current chat");
@@ -298,12 +312,12 @@ function setup(ctx) {
     const weave = button(inviteActorKey ? "Weave + invite" : "Weave", "xtl-button xtl-button--primary");
     weave.disabled = busy || !draft.trim();
     weave.addEventListener("click", () => {
-      const persona = selectedPersona();
+      const persona2 = selectedPersona();
       pendingDraft = { text: draft, replyToId, chatSource };
       const payload = {
         type: "create_weave",
         content: draft,
-        personaId: persona?.sourceId ?? null,
+        personaId: persona2?.sourceId ?? null,
         replyToId,
         inviteActorKey,
         chatId: chatSource?.chatId
@@ -384,6 +398,7 @@ function setup(ctx) {
     header.append(createElement("h3", "xtl-section-title", "Invite an actor"), createElement("span", "xtl-chip", `${state.replyActors.length} available`));
     card.appendChild(header);
     const list = createElement("div", "xtl-roster-list");
+    let accessHint = "";
     for (const actor of state.replyActors.slice(0, 18)) {
       const item = createElement("div", "xtl-actor-card");
       const details = createElement("div", "xtl-actor-card-info");
@@ -400,9 +415,14 @@ function setup(ctx) {
       list.appendChild(item);
     }
     if (!state.replyActors.length) {
-      list.appendChild(createElement("p", "xtl-subtitle", "Add Council members or character cards to invite them here."));
+      const missingCharacterPermission = !state.permissions.includes("characters");
+      list.appendChild(createElement("p", "xtl-roster-empty", missingCharacterPermission ? "Character-card access is not enabled for Timeline. Grant the Characters permission in Extensions, then refresh. Council members will appear here once they are added to your Council." : "No character cards or active Council members are available for this account yet. Add one, then refresh this timeline."));
+    } else if (!state.permissions.includes("characters")) {
+      accessHint = "Character-card access is not enabled, so this list currently shows Council members only.";
     }
     card.appendChild(list);
+    if (accessHint)
+      card.appendChild(createElement("p", "xtl-roster-access", accessHint));
     return card;
   };
   const renderSettings = (state) => {
@@ -410,7 +430,7 @@ function setup(ctx) {
     const details = document.createElement("details");
     const summary = createElement("summary", undefined, "Timeline settings");
     details.appendChild(summary);
-    const copy = createElement("p", "xtl-settings-copy", "Choose a fast, low-cost connection for background character and Council posts. Select the same connection you use for Lumiverse Sidecar LLM if you want one shared model choice.");
+    const copy = createElement("p", "xtl-settings-copy", "Choose a fast connection for background character and Council weaves. Your saved Timeline choice is used only by this extension.");
     details.appendChild(copy);
     const row = createElement("div", "xtl-settings-row");
     const labels = createElement("div");
@@ -436,6 +456,13 @@ function setup(ctx) {
     details.appendChild(row);
     if (!state.permissions.includes("generation")) {
       details.appendChild(createElement("div", "xtl-notice", "Generation permission is not currently granted, so actor-authored weaves and replies are unavailable."));
+    } else if (!state.connections.length) {
+      const notice = createElement("div", "xtl-notice");
+      notice.append(document.createTextNode("No LLM connections are available for this account. Add one in Connections, then return here and refresh. "));
+      const manageConnections = button("Open Connections", "xtl-button");
+      manageConnections.addEventListener("click", () => send({ type: "open_connections" }));
+      notice.appendChild(manageConnections);
+      details.appendChild(notice);
     } else if (!state.state.settings.sidecarConnectionId) {
       details.appendChild(createElement("div", "xtl-notice", "Select a Timeline sidecar before inviting actor replies. You can still write your own weaves."));
     }
