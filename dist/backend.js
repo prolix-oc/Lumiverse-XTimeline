@@ -360,10 +360,11 @@ function getSidecarConnection(state, directory) {
     throw new Error("The selected Timeline sidecar connection does not have an API key.");
   return connection;
 }
-async function runSidecar(state, directory, messages, maxTokens) {
+async function runSidecar(state, directory, messages, maxTokens, userId) {
   const connection = getSidecarConnection(state, directory);
   const result = await spindle.generate.quiet({
     type: "quiet",
+    userId,
     connection_id: connection.id,
     messages,
     parameters: {
@@ -476,7 +477,7 @@ async function createActorReply(state, directory, target, actorKey, userId) {
   const actor = getReplyActor(directory, actorKey);
   sendActivity(userId, true, actor.name);
   try {
-    const content = await runSidecar(state, directory, replyMessages(actor, target, threadForPost(state, target)), 170);
+    const content = await runSidecar(state, directory, replyMessages(actor, target, threadForPost(state, target)), 170, userId);
     state.posts.unshift(createPost({ author: actor, content, replyTo: target, source: "model" }));
     state.posts = prunePosts(state.posts);
     await saveState(state, userId);
@@ -495,7 +496,7 @@ async function createActorWeave(payload, userId) {
   const actor = getReplyActor(directory, payload.actorKey);
   sendActivity(userId, true, actor.name);
   try {
-    const content = await runSidecar(state, directory, originalWeaveMessages(actor), 170);
+    const content = await runSidecar(state, directory, originalWeaveMessages(actor), 170, userId);
     state.posts.unshift(createPost({ author: actor, content, source: "model" }));
     state.posts = prunePosts(state.posts);
     await saveState(state, userId);
@@ -563,7 +564,7 @@ async function prepareChatWeave(userId) {
   try {
     let draft;
     try {
-      draft = await runSidecar(state, directory, chatSummaryMessages(source.chatName, source.characterName, excerpt), 150);
+      draft = await runSidecar(state, directory, chatSummaryMessages(source.chatName, source.characterName, excerpt), 150, userId);
     } catch (error) {
       if (state.settings.sidecarConnectionId)
         throw error;
