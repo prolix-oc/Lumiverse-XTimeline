@@ -725,8 +725,9 @@ async function extractAndResolveGif(content: string): Promise<{ content: string;
   }
 
   const reactionMatch = cleanContent.match(/<reaction>\s*(.*?)\s*<\/reaction>/is)
-  if (reactionMatch && REACTION_EMOJIS.includes(reactionMatch[1].trim() as (typeof REACTION_EMOJIS)[number])) {
-    reaction = reactionMatch[1].trim()
+  const requestedReaction = reactionMatch?.[1].trim().replace(/[\uFE0E\uFE0F]/g, '')
+  if (requestedReaction && REACTION_EMOJIS.includes(requestedReaction as (typeof REACTION_EMOJIS)[number])) {
+    reaction = requestedReaction
   }
   cleanContent = cleanContent.replace(/<reaction>.*?<\/reaction>/gis, '').trim()
 
@@ -782,9 +783,9 @@ function replyMessages(
           : []),
         'You are the final actor turn for this weave. Respond naturally to the newest human weave in the thread, staying under 420 characters; a reaction-only turn is allowed when that is genuinely the most natural response.',
         'Let the character invite real social discourse when it fits: they may agree, push back, sharpen a point, ask a pointed question, add dry humor, or make a clear observation. Do not manufacture outrage, harass anyone, or force a disagreement when genuine agreement suits the character.',
-        'Decide whether a visible reaction to the weave would feel natural. If it would, append exactly one separate tag using one of these reactions: <reaction>❤</reaction>, <reaction>✨</reaction>, <reaction>🔥</reaction>, or <reaction>😂</reaction>. The tag is applied separately and will not be shown in your reply. You may output only that tag for a reaction-only turn. Do not add a reaction tag just by habit.',
+        'You MUST end every actor turn with exactly one separate reaction tag: <reaction>❤</reaction>, <reaction>✨</reaction>, <reaction>🔥</reaction>, or <reaction>😂</reaction>. Choose the reaction that best fits the weave; the tag is applied separately and will not appear in your reply. You may output only that tag for a reaction-only turn.',
         'Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. Do not prefix the response with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.',
-        ...(Math.random() < (gifChance / 100) ? ['You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on a new line at the very end of your response. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs.'] : []),
+        ...(Math.random() < (gifChance / 100) ? ['You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on its own line immediately before the required reaction tag. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs.'] : []),
         `PROFILE:\n${actor.profile || actor.bio}`,
       ].join('\n\n'),
     },

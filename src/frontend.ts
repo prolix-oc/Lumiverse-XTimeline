@@ -248,10 +248,11 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const removeStyle = ctx.dom.addStyle(`
     .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
-    .xtl-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; margin: 0 -14px 12px; padding: 0 18px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 88%, transparent); border-bottom: 1px solid var(--xtl-line); backdrop-filter: blur(12px); }
-    .xtl-title { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.035em; font-weight: 800; }
-    .xtl-subtitle { margin: 4px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.35; }
-    .xtl-card { background: var(--xtl-surface); border: 1px solid var(--xtl-line); border-radius: 16px; margin: 12px 0; overflow: hidden; box-shadow: 0 10px 26px rgb(0 0 0 / 11%); }
+    .xtl-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 0 -14px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border-bottom: 1px solid var(--xtl-line); backdrop-filter: blur(16px); }
+    .xtl-header-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #f5f8fa; font-size: 20px; font-weight: 900; line-height: 1; }
+    .xtl-title { flex: 1; margin: 0; font-size: 18px; line-height: 1.1; letter-spacing: -.02em; font-weight: 850; }
+    .xtl-header-refresh { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-color: transparent; font-size: 18px; }
+    .xtl-card { background: var(--xtl-surface); border: 1px solid var(--xtl-line); border-radius: 16px; margin: 12px 0; overflow: visible; box-shadow: 0 10px 26px rgb(0 0 0 / 11%); }
     .xtl-composer { padding: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--xtl-blue) 10%, var(--xtl-surface)), var(--xtl-surface) 45%); }
     .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 9px; }
     .xtl-composer-top { justify-content: space-between; margin-bottom: 10px; }
@@ -308,7 +309,8 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .xtl-post-body { margin: 8px 0 11px 50px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #f0f4f7; }
     .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
-    .xtl-post-actions { margin-left: 49px; gap: 8px; flex-wrap: wrap; }
+    .xtl-post-gif { display: block; max-width: calc(100% - 50px); margin: 10px 0 20px 50px; border-radius: 12px; }
+    .xtl-post-actions { margin: 8px 0 0 49px; gap: 8px; flex-wrap: wrap; }
     .xtl-post-actions .xtl-button { color: var(--xtl-muted); border-color: transparent; padding: 6px 8px; }
     .xtl-post-actions .xtl-button:hover:not(:disabled) { color: var(--xtl-blue); background: var(--xtl-blue-soft); }
     .xtl-reaction { min-width: 40px; }
@@ -365,12 +367,14 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const renderHeader = () => {
     const header = createElement('header', 'xtl-header')
-    const copy = createElement('div')
-    copy.append(createElement('h2', 'xtl-title', 'Lumiverse Timeline'))
-    copy.append(createElement('p', 'xtl-subtitle', 'Private weaves from your personas, Council, and character cards.'))
-    const refresh = button('Refresh', 'xtl-button xtl-button--quiet')
+    const mark = createElement('span', 'xtl-header-mark', '𝕏')
+    mark.setAttribute('aria-hidden', 'true')
+    const title = createElement('h2', 'xtl-title', 'Timeline')
+    const refresh = button('↻', 'xtl-button xtl-header-refresh')
+    refresh.title = 'Refresh timeline'
+    refresh.setAttribute('aria-label', 'Refresh timeline')
     refresh.addEventListener('click', () => send({ type: 'load_timeline' }))
-    header.append(copy, refresh)
+    header.append(mark, title, refresh)
     return header
   }
 
@@ -731,10 +735,7 @@ export function setup(ctx: SpindleFrontendContext) {
       const img = document.createElement('img')
       img.src = post.gifUrl
       img.className = 'xtl-post-gif'
-      img.style.marginTop = '8px'
-      img.style.marginLeft = '50px'
-      img.style.maxWidth = '100%'
-      img.style.borderRadius = '12px'
+      img.alt = ''
       article.appendChild(img)
     }
     if (post.chatSource) {
