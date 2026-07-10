@@ -217,6 +217,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let replyToId: string | null = null
   let inviteActorKey = ''
   let chatSource: TimelineChatSource | null = null
+  let includeCurrentChat = false
   let busy = false
   let busyActorName: string | null = null
   let error = ''
@@ -226,6 +227,7 @@ export function setup(ctx: SpindleFrontendContext) {
     chatSource: TimelineChatSource | null
     inviteActorKey: string
     mentionedActorKeys: string[]
+    includeCurrentChat: boolean
   } | null = null
   let actorSearch = ''
   let mentionedActorKeys: string[] = []
@@ -286,6 +288,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-button:disabled { opacity: .42; cursor: not-allowed; }
     .xtl-button--primary { background: var(--xtl-blue); border-color: var(--xtl-blue); color: #fff; padding-inline: 17px; }
     .xtl-button--primary:hover:not(:disabled) { background: #1488d4; border-color: #1488d4; color: #fff; }
+    .xtl-button--selected { border-color: var(--xtl-blue); background: var(--xtl-blue-soft); color: #b9e0ff; }
     .xtl-button--quiet { border-color: transparent; color: var(--xtl-muted); padding: 6px 8px; }
     .xtl-button--danger { border-color: color-mix(in srgb, #f4215b 54%, #3a4148); color: #ff9fb8; }
     .xtl-button--danger:hover:not(:disabled) { border-color: #f4215b; background: color-mix(in srgb, #f4215b 14%, transparent); color: #ffd5df; }
@@ -497,31 +500,6 @@ export function setup(ctx: SpindleFrontendContext) {
 
     const controls = createElement('div', 'xtl-composer-controls')
     const actions = createElement('div', 'xtl-composer-actions')
-    const chatButton = button('Weave current chat')
-    chatButton.disabled = busy || !draft.trim() || !state.permissions.includes('chats') || !state.permissions.includes('chat_mutation')
-    chatButton.addEventListener('click', () => {
-      const persona = selectedPersona()
-      const invitedActorKey = inviteActorKey
-      const mentionedKeys = [...mentionedActorKeys]
-      pendingDraft = { text: draft, replyToId, chatSource, inviteActorKey: invitedActorKey, mentionedActorKeys: mentionedKeys }
-      const payload: UnknownRecord = {
-        type: 'weave_current_chat',
-        content: draft,
-        personaId: persona?.sourceId ?? null,
-        replyToId,
-        inviteActorKey: invitedActorKey,
-        mentionedActorKeys: mentionedKeys,
-      }
-      draft = ''
-      replyToId = null
-      chatSource = null
-      mentionedActorKeys = []
-      busy = true
-      busyActorName = 'current chat'
-      render()
-      send(payload)
-    })
-    actions.appendChild(chatButton)
 
     let inviteSelect: HTMLSelectElement | null = null
     if (state.replyActors.length && !replyThreadOwner) {
@@ -550,6 +528,15 @@ export function setup(ctx: SpindleFrontendContext) {
       replyThreadOwner ? `Weave + @${replyThreadOwner.handle} reply` : inviteActorKey ? 'Weave + invite' : 'Weave',
       'xtl-button xtl-button--primary',
     )
+    const currentChatToggle = button('Current chat', `xtl-button${includeCurrentChat ? ' xtl-button--selected' : ''}`)
+    currentChatToggle.setAttribute('aria-pressed', String(includeCurrentChat))
+    currentChatToggle.title = 'Attach the active chat as context and invite its character to reply'
+    currentChatToggle.disabled = busy || !state.permissions.includes('chats') || !state.permissions.includes('chat_mutation')
+    currentChatToggle.addEventListener('click', () => {
+      includeCurrentChat = !includeCurrentChat
+      render()
+      focusComposer()
+    })
     let activeMentionQuery: ComposerMentionQuery | null = null
     let mentionMatches: TimelineActor[] = []
     let activeMentionIndex = 0
@@ -568,8 +555,8 @@ export function setup(ctx: SpindleFrontendContext) {
       ])
       const replyCount = state.permissions.includes('generation') ? replyActorKeys.size : 0
       weave.textContent = replyCount
-        ? `Weave + ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`
-        : 'Weave'
+        ? `Weave + ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}${includeCurrentChat ? ' + chat' : ''}`
+        : includeCurrentChat ? 'Weave + chat' : 'Weave'
     }
     const renderMentionStack = () => {
       const actors = selectedMentionActors().filter((actor) => draftStillMentions(actor, textarea.value))
@@ -655,7 +642,7 @@ export function setup(ctx: SpindleFrontendContext) {
       const counter = root.querySelector<HTMLElement>('.xtl-counter')
       if (counter) counter.textContent = `${draft.length}/${MAX_WEAVE_LENGTH}`
       weave.disabled = busy || !draft.trim()
-      chatButton.disabled = busy || !draft.trim() || !state.permissions.includes('chats') || !state.permissions.includes('chat_mutation')
+      currentChatToggle.disabled = busy || !state.permissions.includes('chats') || !state.permissions.includes('chat_mutation')
       updateWeaveLabel()
       renderMentionStack()
       updateMentionPopover()
@@ -689,9 +676,17 @@ export function setup(ctx: SpindleFrontendContext) {
       const persona = selectedPersona()
       const invitedActorKey = inviteActorKey
       const mentionedKeys = [...mentionedActorKeys]
-      pendingDraft = { text: draft, replyToId, chatSource, inviteActorKey: invitedActorKey, mentionedActorKeys: mentionedKeys }
+      const withCurrentChat = includeCurrentChat
+      pendingDraft = {
+        text: draft,
+        replyToId,
+        chatSource,
+        inviteActorKey: invitedActorKey,
+        mentionedActorKeys: mentionedKeys,
+        includeCurrentChat: withCurrentChat,
+      }
       const payload: UnknownRecord = {
-        type: 'create_weave',
+        type: withCurrentChat ? 'weave_current_chat' : 'create_weave',
         content: draft,
         personaId: persona?.sourceId ?? null,
         replyToId,
@@ -703,13 +698,14 @@ export function setup(ctx: SpindleFrontendContext) {
       replyToId = null
       chatSource = null
       mentionedActorKeys = []
+      includeCurrentChat = false
       busy = true
-      busyActorName = invitedActorKey ? 'timeline reply' : null
+      busyActorName = withCurrentChat ? 'current chat' : invitedActorKey ? 'timeline reply' : null
       render()
       send(payload)
     })
 
-    controls.append(actions, createElement('span', 'xtl-counter', `${draft.length}/${MAX_WEAVE_LENGTH}`), weave)
+    controls.append(actions, createElement('span', 'xtl-counter', `${draft.length}/${MAX_WEAVE_LENGTH}`), currentChatToggle, weave)
     card.appendChild(controls)
     updateWeaveLabel()
     updateMentionPopover()
@@ -1079,6 +1075,7 @@ export function setup(ctx: SpindleFrontendContext) {
       inviteActorKey = ''
       mentionedActorKeys = []
       chatSource = null
+      includeCurrentChat = false
       pendingDraft = null
       send({ type: 'reset_timeline' })
     })
@@ -1142,6 +1139,7 @@ export function setup(ctx: SpindleFrontendContext) {
         chatSource = pendingDraft.chatSource
         inviteActorKey = pendingDraft.inviteActorKey
         mentionedActorKeys = pendingDraft.mentionedActorKeys
+        includeCurrentChat = pendingDraft.includeCurrentChat
         pendingDraft = null
       }
       busy = false
@@ -1163,7 +1161,9 @@ export function setup(ctx: SpindleFrontendContext) {
     iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   })
   const unsubscribeInputAction = inputAction.onClick(() => {
+    includeCurrentChat = true
     tab.activate()
+    render()
     focusComposer()
   })
   const unsubscribeActivate = tab.onActivate(() => send({ type: 'load_timeline' }))
