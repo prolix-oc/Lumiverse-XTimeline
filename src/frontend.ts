@@ -839,8 +839,8 @@ export function setup(ctx: SpindleFrontendContext) {
       'p',
       'xtl-roster-copy',
       rosterActors.length
-        ? `One invited actor is picked at random to weave every ${interval}; the next one is ${timeUntil(state.state.nextRosterWeaveAt)}.`
-        : `Invite actors to let the timeline choose one at random every ${interval}.`,
+        ? `One invited actor is picked at random for a timeline turn every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.`
+        : `Invite actors to let the timeline choose one at random for a turn every ${interval}.`,
     ))
 
     const rosterList = createElement('div', 'xtl-roster-list')
@@ -1052,6 +1052,25 @@ export function setup(ctx: SpindleFrontendContext) {
     gifChanceInputWrap.append(gifChanceInput, document.createTextNode('%'))
     gifChanceRow.append(gifChanceLabels, gifChanceInputWrap)
     details.appendChild(gifChanceRow)
+
+    const hqGifRow = createElement('div', 'xtl-settings-row')
+    const hqGifLabels = createElement('div')
+    hqGifLabels.append(
+      createElement('div', 'xtl-settings-label', 'High Quality GIFs'),
+      createElement('div', 'xtl-settings-hint', 'Download uncompressed media. Uses more data and slows down loading, but removes blurriness.'),
+    )
+    const hqGifInput = document.createElement('input')
+    hqGifInput.type = 'checkbox'
+    hqGifInput.checked = Boolean(state.state.settings.highQualityGifs)
+    hqGifInput.disabled = busy
+    hqGifInput.addEventListener('change', () => {
+      send({
+        type: 'update_settings',
+        highQualityGifs: hqGifInput.checked,
+      })
+    })
+    hqGifRow.append(hqGifLabels, hqGifInput)
+    details.appendChild(hqGifRow)
 
     const chatContextRow = createElement('div', 'xtl-settings-row')
     const chatContextLabels = createElement('div')

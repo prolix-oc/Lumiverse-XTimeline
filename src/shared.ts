@@ -57,6 +57,7 @@ export interface TimelineSettings {
   minActorWeaveIntervalMinutes: number
   maxActorWeaveIntervalMinutes: number
   gifChance?: number
+  highQualityGifs?: boolean
   includeChatContext: boolean
   chatContextMessageCount: number
 }
@@ -98,6 +99,7 @@ export function createEmptyTimelineState(): TimelineState {
       minActorWeaveIntervalMinutes: 30,
       maxActorWeaveIntervalMinutes: 120,
       gifChance: 35,
+      highQualityGifs: false,
       includeChatContext: true,
       chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
     },
