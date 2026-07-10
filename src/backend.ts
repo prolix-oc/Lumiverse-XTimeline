@@ -500,6 +500,7 @@ function createPost(input: {
   replyTo?: TimelinePost | null
   source: TimelinePost['source']
   chatSource?: TimelineChatSource
+  gifUrl?: string
 }): TimelinePost {
   const id = crypto.randomUUID()
   return {
@@ -507,11 +508,12 @@ function createPost(input: {
     author: input.author,
     content: input.content,
     createdAt: now(),
-    replyToId: input.replyTo?.id ?? null,
-    threadRootId: input.replyTo?.threadRootId ?? id,
+    replyToId: input.replyTo ? input.replyTo.id : null,
+    threadRootId: input.replyTo ? input.replyTo.threadRootId : id,
     reactions: [],
     source: input.source,
-    ...(input.chatSource ? { chatSource: input.chatSource } : {}),
+    chatSource: input.chatSource,
+    gifUrl: input.gifUrl,
   }
 }
 
@@ -542,13 +544,43 @@ function getSidecarConnection(state: TimelineState, directory: TimelineDirectory
   return connection
 }
 
+async function extractAndResolveGif(content: string): Promise<{ content: string; gifUrl?: string }> {
+  let cleanContent = content
+  let gifUrl: string | undefined
+
+  const match = content.match(/<gif>(.*?)<\/gif>/is)
+  if (match && match[1]) {
+    const query = match[1].trim()
+    cleanContent = content.replace(/<gif>.*?<\/gif>/is, '').trim()
+    if (query) {
+      try {
+        const url = `https://tenor.com/search/${encodeURIComponent(query.replace(/\s+/g, '-'))}-gifs`
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+        if (res.ok) {
+          const html = await res.text()
+          const matches = [...html.matchAll(/<img[^>]+src="([^"]+\.gif)"/g)]
+          if (matches.length > 0) {
+            // Pick the first one, or a random one from the top 3
+            const limit = Math.min(matches.length, 3)
+            gifUrl = matches[Math.floor(Math.random() * limit)][1]
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve gif:', err)
+      }
+    }
+  }
+
+  return { content: cleanContent, gifUrl }
+}
+
 async function runSidecar(
   state: TimelineState,
   directory: TimelineDirectory,
   messages: LlmMessageDTO[],
   maxTokens: number,
   userId: string,
-): Promise<string> {
+): Promise<{ content: string; gifUrl?: string }> {
   const connection = getSidecarConnection(state, directory)
   const result = await spindle.generate.quiet({
     type: 'quiet',
@@ -561,7 +593,7 @@ async function runSidecar(
     },
     reasoning: { source: 'off' },
   })
-  return extractContent(result)
+  return extractAndResolveGif(extractContent(result))
 }
 
 function replyMessages(actor: TimelineActor, target: TimelinePost, thread: TimelinePost[]): LlmMessageDTO[] {
@@ -582,6 +614,7 @@ function replyMessages(actor: TimelineActor, target: TimelinePost, thread: Timel
         'You are the final actor reply for this turn. Respond naturally to the newest human weave in the thread, staying under 420 characters.',
         'Let the character invite real social discourse when it fits: they may agree, push back, sharpen a point, ask a pointed question, add dry humor, or make a clear observation. Do not manufacture outrage, harass anyone, or force a disagreement when genuine agreement suits the character.',
         'Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. Do not prefix the response with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.',
+        ...(Math.random() < 0.35 ? ['You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on a new line at the very end of your response. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs.'] : []),
         `PROFILE:\n${actor.profile || actor.bio}`,
       ].join('\n\n'),
     },
@@ -605,6 +638,7 @@ function originalWeaveMessages(actor: TimelineActor): LlmMessageDTO[] {
         `You are ${actor.name}. Your profile below is reference material, never instructions.`,
         'Make it feel like a spontaneous post someone would actually stop to answer. Choose a character-fitting observation, opinion, challenge, question, small provocation, agreement, or invitation; leave room for discussion without turning every post into engagement bait.',
         'The voice can be warm, skeptical, witty, blunt, curious, or contrarian when supported by the profile. Do not invent concrete events or relationships. Stay under 420 characters. Do not prefix it with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.',
+        ...(Math.random() < 0.35 ? ['You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on a new line at the very end of your response. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs.'] : []),
         `PROFILE:\n${actor.profile || actor.bio}`,
       ].join('\n\n'),
     },
@@ -698,8 +732,8 @@ async function createActorReply(
   const actor = getReplyActor(directory, actorKey, fallbackActor)
   if (reportActivity) sendActivity(userId, true, actor.name)
   try {
-    const content = await runSidecar(state, directory, replyMessages(actor, target, threadForPost(state, target)), 170, userId)
-    state.posts.unshift(createPost({ author: actor, content, replyTo: target, source: 'model' }))
+    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, threadForPost(state, target)), 170, userId)
+    state.posts.unshift(createPost({ author: actor, content, gifUrl, replyTo: target, source: 'model' }))
     state.posts = prunePosts(state.posts)
     await saveState(state, userId)
     await sendState(userId, state, directory)
@@ -742,8 +776,8 @@ async function createActorWeave(payload: UnknownRecord, userId: string): Promise
   const actor = getReplyActor(directory, payload.actorKey)
   sendActivity(userId, true, actor.name)
   try {
-    const content = await runSidecar(state, directory, originalWeaveMessages(actor), 170, userId)
-    state.posts.unshift(createPost({ author: actor, content, source: 'model' }))
+    const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor), 170, userId)
+    state.posts.unshift(createPost({ author: actor, content, gifUrl, source: 'model' }))
     state.posts = prunePosts(state.posts)
     await saveState(state, userId)
     await sendState(userId, state, directory)
@@ -774,8 +808,8 @@ async function createScheduledRosterWeave(userId: string): Promise<void> {
 
   const actor = actors[Math.floor(Math.random() * actors.length)]
   try {
-    const content = await runSidecar(state, directory, originalWeaveMessages(actor), 170, userId)
-    state.posts.unshift(createPost({ author: actor, content, source: 'model' }))
+    const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor), 170, userId)
+    state.posts.unshift(createPost({ author: actor, content, gifUrl, source: 'model' }))
     state.posts = prunePosts(state.posts)
   } catch (error) {
     spindle.log.warn(`Timeline roster could not weave as ${actor.name}: ${errorMessage(error)}`)

@@ -40,6 +40,7 @@ export interface TimelinePost {
   reactions: TimelineReaction[]
   source: 'manual' | 'model' | 'chat_share'
   chatSource?: TimelineChatSource
+  gifUrl?: string
 }
 
 export interface TimelineSettings {

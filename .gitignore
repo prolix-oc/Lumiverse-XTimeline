@@ -1,2 +1,7 @@
 node_modules/
 .DS_Store
+test_gif_func.ts
+test_gif_regex.js
+test_giphy.js
+test_tenor_api.js
+test_tenor.js
