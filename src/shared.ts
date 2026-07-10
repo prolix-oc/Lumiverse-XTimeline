@@ -2,6 +2,8 @@ export const TIMELINE_STORAGE_PATH = 'timeline/state.json'
 export const MAX_WEAVE_LENGTH = 500
 export const MAX_POSTS = 320
 export const MAX_ROSTER_ACTORS = 30
+export const MAX_CHAT_CONTEXT_MESSAGES = 30
+export const DEFAULT_CHAT_CONTEXT_MESSAGES = 10
 export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
 export type TimelineActorKind = 'persona' | 'character' | 'council'
@@ -30,6 +32,11 @@ export interface TimelineChatSource {
   characterName: string | null
 }
 
+export interface TimelineChatContext {
+  messageCount: number
+  excerpt: string
+}
+
 export interface TimelinePost {
   id: string
   author: TimelineActor
@@ -40,6 +47,7 @@ export interface TimelinePost {
   reactions: TimelineReaction[]
   source: 'manual' | 'model' | 'chat_share'
   chatSource?: TimelineChatSource
+  chatContext?: TimelineChatContext
   gifUrl?: string
 }
 
@@ -49,10 +57,12 @@ export interface TimelineSettings {
   minActorWeaveIntervalMinutes: number
   maxActorWeaveIntervalMinutes: number
   gifChance?: number
+  includeChatContext: boolean
+  chatContextMessageCount: number
 }
 
 export interface TimelineState {
-  version: 2
+  version: 3
   posts: TimelinePost[]
   rosterActorKeys: string[]
   nextRosterWeaveAt: number | null
@@ -78,7 +88,7 @@ export interface TimelineSnapshot {
 
 export function createEmptyTimelineState(): TimelineState {
   return {
-    version: 2,
+    version: 3,
     posts: [],
     rosterActorKeys: [],
     nextRosterWeaveAt: null,
@@ -88,6 +98,8 @@ export function createEmptyTimelineState(): TimelineState {
       minActorWeaveIntervalMinutes: 30,
       maxActorWeaveIntervalMinutes: 120,
       gifChance: 35,
+      includeChatContext: true,
+      chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
     },
   }
 }

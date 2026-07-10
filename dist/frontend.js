@@ -383,6 +383,9 @@ function setup(ctx) {
     if (chatSource) {
       const context = createElement("p", "xtl-compose-context");
       context.append(createElement("span", "xtl-chip", `Sharing ${chatSource.chatName}`));
+      if (state.state.settings.includeChatContext) {
+        context.append(createElement("span", "xtl-chip", `Last ${state.state.settings.chatContextMessageCount} messages available to replies`));
+      }
       const clear = button("Remove chat link", "xtl-button xtl-button--quiet");
       clear.addEventListener("click", () => {
         chatSource = null;
@@ -649,7 +652,8 @@ function setup(ctx) {
       article.appendChild(img);
     }
     if (post.chatSource) {
-      article.appendChild(createElement("div", "xtl-post-source", `From ${post.chatSource.chatName}${post.chatSource.characterName ? ` · ${post.chatSource.characterName}` : ""}`));
+      const contextLabel = post.chatContext ? ` · ${post.chatContext.messageCount} messages available to replies` : "";
+      article.appendChild(createElement("div", "xtl-post-source", `From ${post.chatSource.chatName}${post.chatSource.characterName ? ` · ${post.chatSource.characterName}` : ""}${contextLabel}`));
     }
     const actions = createElement("div", "xtl-post-actions");
     for (const emoji of REACTION_EMOJIS) {
@@ -883,6 +887,36 @@ function setup(ctx) {
     gifChanceInputWrap.append(gifChanceInput, document.createTextNode("%"));
     gifChanceRow.append(gifChanceLabels, gifChanceInputWrap);
     details.appendChild(gifChanceRow);
+    const chatContextRow = createElement("div", "xtl-settings-row");
+    const chatContextLabels = createElement("div");
+    chatContextLabels.append(createElement("div", "xtl-settings-label", "Chat reply context"), createElement("div", "xtl-settings-hint", "When you post a chat weave, save a private snapshot for invited actors to discuss or gossip about. The draft uses the same message count."));
+    const chatContextControls = createElement("div", "xtl-interval-inputs");
+    const includeChatContext = document.createElement("input");
+    includeChatContext.type = "checkbox";
+    includeChatContext.checked = state.state.settings.includeChatContext;
+    includeChatContext.disabled = busy;
+    includeChatContext.setAttribute("aria-label", "Include chat context in actor replies");
+    const chatContextCount = document.createElement("input");
+    chatContextCount.type = "number";
+    chatContextCount.className = "xtl-number-input";
+    chatContextCount.min = "1";
+    chatContextCount.max = "30";
+    chatContextCount.step = "1";
+    chatContextCount.value = String(state.state.settings.chatContextMessageCount);
+    chatContextCount.disabled = busy || !includeChatContext.checked;
+    chatContextCount.setAttribute("aria-label", "Number of recent chat messages for actor replies");
+    includeChatContext.addEventListener("change", () => {
+      chatContextCount.disabled = busy || !includeChatContext.checked;
+      send({ type: "update_settings", includeChatContext: includeChatContext.checked });
+    });
+    chatContextCount.addEventListener("change", () => {
+      const count = Math.max(1, Math.min(30, Math.round(Number(chatContextCount.value) || 1)));
+      chatContextCount.value = String(count);
+      send({ type: "update_settings", chatContextMessageCount: count });
+    });
+    chatContextControls.append(includeChatContext, chatContextCount, document.createTextNode("recent messages"));
+    chatContextRow.append(chatContextLabels, chatContextControls);
+    details.appendChild(chatContextRow);
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
     resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, threads, and roster invitations. Your persona, sidecar, and cadence settings stay saved."));
