@@ -472,6 +472,9 @@ export function setup(ctx: SpindleFrontendContext) {
     reply.disabled = busy
     reply.addEventListener('click', () => {
       replyToId = post.id
+      inviteActorKey = post.author.kind === 'character' || post.author.kind === 'council'
+        ? post.author.key
+        : ''
       chatSource = null
       render()
       focusComposer()

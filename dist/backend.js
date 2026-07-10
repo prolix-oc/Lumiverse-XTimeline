@@ -471,6 +471,8 @@ async function createUserWeave(payload, userId) {
   await sendState(userId, state, directory);
   if (typeof payload.inviteActorKey === "string" && payload.inviteActorKey) {
     await createActorReply(state, directory, state.posts[0], payload.inviteActorKey, userId);
+  } else {
+    sendActivity(userId, false);
   }
 }
 async function createActorReply(state, directory, target, actorKey, userId) {
