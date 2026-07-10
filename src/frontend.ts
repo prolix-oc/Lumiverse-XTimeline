@@ -1015,7 +1015,7 @@ export function setup(ctx: SpindleFrontendContext) {
     const chatContextLabels = createElement('div')
     chatContextLabels.append(
       createElement('div', 'xtl-settings-label', 'Chat reply context'),
-      createElement('div', 'xtl-settings-hint', 'Each chat weave saves a private snapshot for the active character to discuss or gossip about. The generated weave uses the same message count.'),
+      createElement('div', 'xtl-settings-hint', 'Each chat weave saves a private snapshot for the active character to discuss or gossip about. The inserted message uses the same message count.'),
     )
     const chatContextControls = createElement('div', 'xtl-interval-inputs')
     const includeChatContext = document.createElement('input')
