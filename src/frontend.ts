@@ -200,6 +200,29 @@ function actorWhoOwnsThread(post: TimelinePost, state: TimelineSnapshot): Timeli
   return null
 }
 
+function replyContext(post: TimelinePost, state: TimelineSnapshot): string | null {
+  if (!post.replyToId) return null
+  const postsById = new Map(state.state.posts.map((candidate) => [candidate.id, candidate]))
+  const recipients: TimelineActor[] = []
+  const recipientKeys = new Set<string>()
+  const visited = new Set<string>()
+  let cursor = postsById.get(post.replyToId)
+
+  while (cursor && !visited.has(cursor.id)) {
+    visited.add(cursor.id)
+    if (cursor.author.key !== post.author.key && !recipientKeys.has(cursor.author.key)) {
+      recipients.push(cursor.author)
+      recipientKeys.add(cursor.author.key)
+    }
+    cursor = cursor.replyToId ? postsById.get(cursor.replyToId) : undefined
+  }
+
+  if (!recipients.length) return null
+  const [primary] = recipients
+  const others = recipients.length - 1
+  return `Replying to @${primary.handle}${others ? ` and ${others} ${others === 1 ? 'other' : 'others'}` : ''}`
+}
+
 function timeUntil(timestamp: number | null): string {
   if (!timestamp || timestamp <= Date.now()) return 'due now'
   const minutes = Math.max(1, Math.ceil((timestamp - Date.now()) / 60_000))
@@ -304,6 +327,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-post-name-row { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
     .xtl-post-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
     .xtl-post-handle, .xtl-post-time { color: var(--xtl-muted); font-size: 12px; white-space: nowrap; }
+    .xtl-post-reply-context { margin-top: 2px; color: var(--xtl-muted); font-size: 11px; line-height: 1.25; }
     .xtl-avatar { flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px; border: 2px solid color-mix(in srgb, var(--xtl-blue) 44%, #45505c); border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #1d9bf0, #7856ff); color: #fff; font-size: 12px; font-weight: 800; }
     .xtl-avatar--small { width: 32px; height: 32px; font-size: 10px; }
     .xtl-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -728,6 +752,8 @@ export function setup(ctx: SpindleFrontendContext) {
       createElement('span', 'xtl-post-time', `· ${relativeTime(post.createdAt)}`),
     )
     author.appendChild(nameRow)
+    const context = replyContext(post, state)
+    if (context) author.appendChild(createElement('div', 'xtl-post-reply-context', context))
     header.append(actorAvatar(post.author), author)
     article.appendChild(header)
     article.appendChild(createElement('div', 'xtl-post-body', post.content))

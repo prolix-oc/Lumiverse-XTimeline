@@ -166,6 +166,28 @@ function actorWhoOwnsThread(post, state) {
   }
   return null;
 }
+function replyContext(post, state) {
+  if (!post.replyToId)
+    return null;
+  const postsById = new Map(state.state.posts.map((candidate) => [candidate.id, candidate]));
+  const recipients = [];
+  const recipientKeys = new Set;
+  const visited = new Set;
+  let cursor = postsById.get(post.replyToId);
+  while (cursor && !visited.has(cursor.id)) {
+    visited.add(cursor.id);
+    if (cursor.author.key !== post.author.key && !recipientKeys.has(cursor.author.key)) {
+      recipients.push(cursor.author);
+      recipientKeys.add(cursor.author.key);
+    }
+    cursor = cursor.replyToId ? postsById.get(cursor.replyToId) : undefined;
+  }
+  if (!recipients.length)
+    return null;
+  const [primary] = recipients;
+  const others = recipients.length - 1;
+  return `Replying to @${primary.handle}${others ? ` and ${others} ${others === 1 ? "other" : "others"}` : ""}`;
+}
 function timeUntil(timestamp) {
   if (!timestamp || timestamp <= Date.now())
     return "due now";
@@ -261,6 +283,7 @@ function setup(ctx) {
     .xtl-post-name-row { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
     .xtl-post-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
     .xtl-post-handle, .xtl-post-time { color: var(--xtl-muted); font-size: 12px; white-space: nowrap; }
+    .xtl-post-reply-context { margin-top: 2px; color: var(--xtl-muted); font-size: 11px; line-height: 1.25; }
     .xtl-avatar { flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px; border: 2px solid color-mix(in srgb, var(--xtl-blue) 44%, #45505c); border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #1d9bf0, #7856ff); color: #fff; font-size: 12px; font-weight: 800; }
     .xtl-avatar--small { width: 32px; height: 32px; font-size: 10px; }
     .xtl-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -653,6 +676,9 @@ function setup(ctx) {
     const nameRow = createElement("div", "xtl-post-name-row");
     nameRow.append(createElement("span", "xtl-post-name", post.author.name), createElement("span", "xtl-post-handle", `@${post.author.handle}`), createElement("span", "xtl-post-time", `· ${relativeTime(post.createdAt)}`));
     author.appendChild(nameRow);
+    const context = replyContext(post, state);
+    if (context)
+      author.appendChild(createElement("div", "xtl-post-reply-context", context));
     header.append(actorAvatar(post.author), author);
     article.appendChild(header);
     article.appendChild(createElement("div", "xtl-post-body", post.content));
