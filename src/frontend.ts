@@ -18,8 +18,6 @@ interface TimelineBackendMessage {
   message?: string
   active?: boolean
   actorName?: string | null
-  draft?: string
-  source?: TimelineChatSource
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -506,7 +504,7 @@ export function setup(ctx: SpindleFrontendContext) {
       busy = true
       busyActorName = 'current chat'
       render()
-      send({ type: 'prepare_chat_weave' })
+      send({ type: 'weave_current_chat' })
     })
     actions.appendChild(chatButton)
 
@@ -1017,7 +1015,7 @@ export function setup(ctx: SpindleFrontendContext) {
     const chatContextLabels = createElement('div')
     chatContextLabels.append(
       createElement('div', 'xtl-settings-label', 'Chat reply context'),
-      createElement('div', 'xtl-settings-hint', 'When you post a chat weave, save a private snapshot for invited actors to discuss or gossip about. The draft uses the same message count.'),
+      createElement('div', 'xtl-settings-hint', 'Each chat weave saves a private snapshot for the active character to discuss or gossip about. The generated weave uses the same message count.'),
     )
     const chatContextControls = createElement('div', 'xtl-interval-inputs')
     const includeChatContext = document.createElement('input')
@@ -1141,15 +1139,6 @@ export function setup(ctx: SpindleFrontendContext) {
       render()
       return
     }
-    if (message.type === 'chat_weave_draft' && typeof message.draft === 'string' && message.source) {
-      draft = message.draft.slice(0, MAX_WEAVE_LENGTH)
-      chatSource = message.source
-      replyToId = null
-      busy = false
-      busyActorName = null
-      render()
-      focusComposer()
-    }
   })
 
   const inputAction = ctx.ui.registerInputBarAction({
@@ -1162,7 +1151,7 @@ export function setup(ctx: SpindleFrontendContext) {
     busy = true
     busyActorName = 'current chat'
     render()
-    send({ type: 'prepare_chat_weave' })
+    send({ type: 'weave_current_chat' })
   })
   const unsubscribeActivate = tab.onActivate(() => send({ type: 'load_timeline' }))
 
