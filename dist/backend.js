@@ -238,7 +238,8 @@ function normalizePost(value) {
     threadRootId: stringValue(value.threadRootId, id),
     reactions: Array.isArray(value.reactions) ? value.reactions.map(normalizeReaction).filter((reaction) => Boolean(reaction)) : [],
     source: source === "model" || source === "chat_share" ? source : "manual",
-    ...normalizeChatSource(value.chatSource) ? { chatSource: normalizeChatSource(value.chatSource) } : {}
+    ...normalizeChatSource(value.chatSource) ? { chatSource: normalizeChatSource(value.chatSource) } : {},
+    ...typeof value.gifUrl === "string" ? { gifUrl: value.gifUrl } : {}
   };
 }
 function normalizeState(value) {
@@ -257,7 +258,8 @@ function normalizeState(value) {
       selectedPersonaId: typeof settings.selectedPersonaId === "string" ? settings.selectedPersonaId : null,
       sidecarConnectionId: typeof settings.sidecarConnectionId === "string" ? settings.sidecarConnectionId : null,
       minActorWeaveIntervalMinutes,
-      maxActorWeaveIntervalMinutes
+      maxActorWeaveIntervalMinutes,
+      gifChance: typeof settings.gifChance === "number" ? settings.gifChance : fallback.settings.gifChance
     }
   };
 }

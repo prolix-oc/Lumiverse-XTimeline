@@ -293,6 +293,7 @@ function normalizePost(value: unknown): TimelinePost | null {
       : [],
     source: source === 'model' || source === 'chat_share' ? source : 'manual',
     ...(normalizeChatSource(value.chatSource) ? { chatSource: normalizeChatSource(value.chatSource) } : {}),
+    ...(typeof value.gifUrl === 'string' ? { gifUrl: value.gifUrl } : {}),
   }
 }
 
@@ -324,6 +325,7 @@ function normalizeState(value: unknown): TimelineState {
       sidecarConnectionId: typeof settings.sidecarConnectionId === 'string' ? settings.sidecarConnectionId : null,
       minActorWeaveIntervalMinutes,
       maxActorWeaveIntervalMinutes,
+      gifChance: typeof settings.gifChance === 'number' ? settings.gifChance : fallback.settings.gifChance,
     },
   }
 }
