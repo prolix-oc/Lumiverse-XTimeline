@@ -165,7 +165,7 @@ function orderedPosts(posts: TimelinePost[]): Array<{ post: TimelinePost; depth:
 function actorWhoOwnsThread(post: TimelinePost, state: TimelineSnapshot): TimelineActor | null {
   const root = state.state.posts.find((candidate) => candidate.id === post.threadRootId)
   if (!root || (root.author.kind !== 'character' && root.author.kind !== 'council')) return null
-  return root.author
+  return state.replyActors.find((actor) => actor.key === root.author.key) ?? null
 }
 
 function timeUntil(timestamp: number | null): string {
