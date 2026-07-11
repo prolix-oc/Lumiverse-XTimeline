@@ -646,9 +646,14 @@ export function setup(ctx: SpindleFrontendContext) {
     for (const actor of [...state.state.posts.map((post) => post.author), ...state.personas, ...state.replyActors]) {
       actorByKey.set(actor.key, actor)
     }
+    const currentPersona = state.personas.find((persona) => (
+      persona.sourceId === (state.state.settings.selectedPersonaId ?? state.activePersonaId)
+    )) ?? state.personas[0] ?? null
     return actorKeys.map((key) => {
       if (key === 'timeline_user') {
-        return { key, name: 'You', handle: 'you', avatarUrl: null }
+        return currentPersona
+          ? { key, name: currentPersona.name, handle: currentPersona.handle, avatarUrl: currentPersona.avatarUrl }
+          : { key, name: 'You', handle: 'you', avatarUrl: null }
       }
       const actor = actorByKey.get(key)
       return actor
@@ -1063,9 +1068,10 @@ export function setup(ctx: SpindleFrontendContext) {
     }
 
     const actions = createElement('div', 'xtl-post-actions')
+    const currentPersonaKey = selectedPersona()?.key
     for (const emoji of REACTION_EMOJIS) {
       const reaction = post.reactions.find((entry) => entry.emoji === emoji)
-      const active = Boolean(reaction?.actorKeys.includes('timeline_user'))
+      const active = Boolean(reaction?.actorKeys.some((actorKey) => actorKey === currentPersonaKey || actorKey === 'timeline_user'))
       const react = button(`${emoji}${reaction?.actorKeys.length ? ` ${reaction.actorKeys.length}` : ''}`, `xtl-button xtl-reaction${active ? ' xtl-reaction--active' : ''}`)
       const reactingActorKeys = reaction?.actorKeys ?? []
       if (reactingActorKeys.length) {
