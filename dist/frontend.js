@@ -331,7 +331,9 @@ function setup(ctx) {
   tab.root.replaceChildren(root);
   const removeStyle = ctx.dom.addStyle(`
     .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; --xtl-keyboard-inset: 0px; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
-    .xtl-app--dms { height: 100vh; min-height: 0; overflow: clip; overscroll-behavior: none; }
+    .xtl-app--dms { display: flex; flex-direction: column; height: 100vh; min-height: 0; overflow: hidden; overscroll-behavior: none; }
+    .xtl-app--dms .xtl-header { position: relative; top: auto; flex: 0 0 auto; }
+    .xtl-dm-stage { flex: 1 1 auto; min-height: 0; overflow: hidden; margin-bottom: var(--xtl-keyboard-inset); }
     .xtl-header { position: sticky; top: 4px; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 4px -6px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border: 1px solid color-mix(in srgb, var(--xtl-line) 88%, transparent); border-radius: 12px; backdrop-filter: blur(16px); }
     .xtl-header-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #f5f8fa; font-size: 20px; font-weight: 900; line-height: 1; }
     .xtl-title { flex: 1; margin: 0; font-size: 18px; line-height: 1.1; letter-spacing: -.02em; font-weight: 850; }
@@ -418,6 +420,7 @@ function setup(ctx) {
     .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
     .xtl-post-gif { display: block; width: calc(100% - 50px); max-width: none; height: auto; margin: 10px 0 20px 50px; border-radius: 12px; }
     .xtl-dm-shell { height: calc(100vh - 170px - var(--xtl-keyboard-inset)); min-height: 300px; overflow: hidden; overscroll-behavior: contain; }
+    .xtl-app--dms .xtl-dm-shell { box-sizing: border-box; height: 100%; min-height: 0; margin: 0; }
     .xtl-dm-inbox { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; background: #0b0e12; }
     .xtl-dm-inbox-header, .xtl-dm-thread-header { display: flex; align-items: center; gap: 9px; min-height: 58px; box-sizing: border-box; padding: 11px 13px; border-bottom: 1px solid var(--xtl-line); }
     .xtl-dm-inbox-title { flex: 1; margin: 0; font-size: 17px; letter-spacing: -.02em; }
@@ -548,7 +551,6 @@ function setup(ctx) {
       const thread = root.querySelector(".xtl-dm-thread-scroll");
       if (thread)
         thread.scrollTop = thread.scrollHeight;
-      root.querySelector(".xtl-dm-composer")?.scrollIntoView({ block: "end", behavior: "smooth" });
     });
   };
   const applyKeyboardPresentation = (keyboard) => {
@@ -1981,7 +1983,9 @@ function setup(ctx) {
       return;
     }
     if (activeView === "dms") {
-      root.appendChild(renderDmsContent());
+      const stage = createElement("div", "xtl-dm-stage");
+      stage.appendChild(renderDmsContent());
+      root.appendChild(stage);
       return;
     }
     const renderedError = renderError();
