@@ -329,9 +329,9 @@ function setup(ctx) {
     .xtl-reaction-tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fa; font-size: 12px; font-weight: 750; }
     .xtl-reaction-tooltip-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 10px; margin-top: 1px; }
     .xtl-feed-top { scroll-margin-top: 68px; height: 1px; }
-    .xtl-new-weaves-wrap { position: sticky; top: 67px; z-index: 3; display: flex; justify-content: center; height: 0; pointer-events: none; }
-    .xtl-new-weaves { pointer-events: auto; border-color: color-mix(in srgb, var(--xtl-blue) 74%, #3a4148); background: var(--xtl-blue); box-shadow: 0 7px 19px rgb(0 0 0 / 30%); color: #fff; margin-top: 9px; padding: 8px 13px; }
-    .xtl-new-weaves:hover:not(:disabled) { border-color: #70c7ff; background: #1488d4; color: #fff; }
+    .xtl-new-weaves-wrap { position: sticky; top: 66px; z-index: 3; display: flex; justify-content: center; width: 100%; height: 1px; pointer-events: none; }
+    .xtl-new-weaves { pointer-events: auto; min-height: 32px; box-sizing: border-box; border: 1px solid #68c0ff; background: linear-gradient(180deg, #2aa7f5, #168bd6); box-shadow: 0 7px 19px rgb(0 0 0 / 34%); color: #fff; margin-top: 9px; padding: 8px 14px; font-size: 12px; font-weight: 800; line-height: 1; letter-spacing: .01em; white-space: nowrap; }
+    .xtl-new-weaves:hover:not(:disabled) { border-color: #b6e3ff; background: linear-gradient(180deg, #44b4fa, #1a95e5); color: #fff; }
     .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
