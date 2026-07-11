@@ -9,7 +9,7 @@ export const MAX_GENERATION_MAX_TOKENS = 2_048
 export const DEFAULT_GENERATION_MAX_TOKENS = 2_048
 export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
-export type TimelineActorKind = 'persona' | 'character' | 'council'
+export type TimelineActorKind = 'persona' | 'character' | 'council' | 'lumia'
 export type TimelineRosterAction = 'weave' | 'reply' | 'react'
 
 export interface TimelineActor {

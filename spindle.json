@@ -1,11 +1,11 @@
 {
-  "version": "0.2.1",
+  "version": "0.3",
   "name": "Lumiverse Timeline",
   "identifier": "lumiverse_timeline",
   "author": "Prolix OCs",
   "github": "https://github.com/darranhall/Lumiverse-XTimeline",
   "homepage": "https://github.com/darranhall/Lumiverse-XTimeline",
-  "description": "A private social timeline for personas, character cards, and Council members.",
+  "description": "A private social timeline for personas, Lumia DLC items, character cards, and Council members.",
   "permissions": [
     "generation",
     "characters",

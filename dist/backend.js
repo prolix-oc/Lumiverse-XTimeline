@@ -251,6 +251,24 @@ function makeCouncilActor(member) {
     role: member.role
   };
 }
+function makeLumiaActor(item) {
+  return {
+    key: `lumia:${item.id}`,
+    kind: "lumia",
+    sourceId: item.id,
+    name: item.name || "Unnamed Lumia",
+    handle: toHandle(item.name, "lumia"),
+    avatarUrl: item.avatar_url,
+    bio: compact(item.personality || item.definition || `Lumia DLC item${item.author_name ? ` by ${item.author_name}` : ""}`, 110),
+    profile: compact([
+      `Definition: ${item.definition}`,
+      `Personality: ${item.personality}`,
+      `Behavior: ${item.behavior}`,
+      ...item.author_name ? [`DLC author: ${item.author_name}`] : []
+    ].filter((entry) => entry !== "Definition: " && entry !== "Personality: " && entry !== "Behavior: ").join(`
+`), 2200)
+  };
+}
 async function attempt(label, fallback, work) {
   try {
     return await work();
@@ -295,11 +313,12 @@ async function loadDirectory(userId) {
   const canUsePersonas = spindle.permissions.has("personas");
   const canUseCharacters = spindle.permissions.has("characters");
   const canUseGeneration = spindle.permissions.has("generation");
-  const [personaResult, activePersona, characterResult, councilMembers, connectionRows] = await Promise.all([
+  const [personaResult, activePersona, characterResult, councilMembers, lumiaItems, connectionRows] = await Promise.all([
     canUsePersonas ? attempt("personas", { data: [], total: 0 }, () => spindle.personas.list({ limit: 200, userId })) : Promise.resolve({ data: [], total: 0 }),
     canUsePersonas ? attempt("active persona", null, () => spindle.personas.getActive(userId)) : Promise.resolve(null),
     canUseCharacters ? attempt("character cards", { data: [], total: 0 }, () => loadAllCharacterCards(userId)) : Promise.resolve({ data: [], total: 0 }),
     attempt("Council members", [], () => spindle.council.getMembers({ userId })),
+    attempt("Lumia DLC items", [], async () => (await spindle.dlc.getCatalog({ userId })).lumiaItems),
     canUseGeneration ? attempt("connection profiles", [], () => spindle.connections.list(userId)) : Promise.resolve([])
   ]);
   const avatarUrls = await resolveAvatarUrls([
@@ -309,9 +328,11 @@ async function loadDirectory(userId) {
   const personas = personaResult.data.map((persona) => makePersonaActor(persona, avatarUrls.get(persona.image_id ?? "") ?? null));
   const characters = characterResult.data.map((character) => makeCharacterActor(character, avatarUrls.get(character.image_id ?? "") ?? null));
   const council = councilMembers.map(makeCouncilActor);
+  const councilItemIds = new Set(councilMembers.map((member) => member.itemId));
+  const lumias = lumiaItems.filter((item) => !councilItemIds.has(item.id)).map(makeLumiaActor);
   return {
     personas,
-    replyActors: [...council, ...characters].sort((left, right) => left.name.localeCompare(right.name)),
+    replyActors: [...council, ...lumias, ...characters].sort((left, right) => left.name.localeCompare(right.name)),
     connections: connectionRows.map((connection) => ({
       id: connection.id,
       name: connection.name,
@@ -326,7 +347,7 @@ function normalizeActor(value) {
   if (!isRecord(value))
     return null;
   const kind = stringValue(value.kind);
-  if (kind !== "persona" && kind !== "character" && kind !== "council")
+  if (kind !== "persona" && kind !== "character" && kind !== "council" && kind !== "lumia")
     return null;
   const name = stringValue(value.name);
   const key = stringValue(value.key);
@@ -506,11 +527,11 @@ function getPersonaAuthor(directory, requestedId, settings) {
 }
 function getReplyActor(directory, actorKey, fallbackActor) {
   if (typeof actorKey !== "string")
-    throw new Error("Choose a character card or Council member first.");
+    throw new Error("Choose an inviteable actor first.");
   const actor = directory.replyActors.find((candidate) => candidate.key === actorKey);
   if (actor)
     return actor;
-  if (fallbackActor?.key === actorKey && (fallbackActor.kind === "character" || fallbackActor.kind === "council")) {
+  if (fallbackActor?.key === actorKey && fallbackActor.kind !== "persona") {
     return fallbackActor;
   }
   throw new Error("That timeline actor is no longer available.");
@@ -524,7 +545,7 @@ function getReplyingThreadActor(state, post) {
   while (cursor && !visited.has(cursor.id)) {
     const current = cursor;
     visited.add(current.id);
-    if (current.author.kind === "character" || current.author.kind === "council") {
+    if (current.author.kind === "character" || current.author.kind === "council" || current.author.kind === "lumia") {
       return current.author;
     }
     cursor = current.replyToId ? postsById.get(current.replyToId) : undefined;

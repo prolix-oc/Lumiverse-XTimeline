@@ -3,6 +3,7 @@ import type {
   ConnectionProfileDTO,
   CouncilMemberContext,
   LlmMessageDTO,
+  LumiaItemDTO,
   PersonaDTO,
   SpindleAPI,
 } from 'lumiverse-spindle-types'
@@ -290,6 +291,27 @@ function makeCouncilActor(member: CouncilMemberContext): TimelineActor {
   }
 }
 
+function makeLumiaActor(item: LumiaItemDTO): TimelineActor {
+  return {
+    key: `lumia:${item.id}`,
+    kind: 'lumia',
+    sourceId: item.id,
+    name: item.name || 'Unnamed Lumia',
+    handle: toHandle(item.name, 'lumia'),
+    avatarUrl: item.avatar_url,
+    bio: compact(item.personality || item.definition || `Lumia DLC item${item.author_name ? ` by ${item.author_name}` : ''}`, 110),
+    profile: compact(
+      [
+        `Definition: ${item.definition}`,
+        `Personality: ${item.personality}`,
+        `Behavior: ${item.behavior}`,
+        ...(item.author_name ? [`DLC author: ${item.author_name}`] : []),
+      ].filter((entry) => entry !== 'Definition: ' && entry !== 'Personality: ' && entry !== 'Behavior: ').join('\n'),
+      2200,
+    ),
+  }
+}
+
 async function attempt<T>(label: string, fallback: T, work: () => Promise<T>): Promise<T> {
   try {
     return await work()
@@ -338,7 +360,7 @@ async function loadDirectory(userId: string): Promise<TimelineDirectory> {
   const canUseCharacters = spindle.permissions.has('characters')
   const canUseGeneration = spindle.permissions.has('generation')
 
-  const [personaResult, activePersona, characterResult, councilMembers, connectionRows] = await Promise.all([
+  const [personaResult, activePersona, characterResult, councilMembers, lumiaItems, connectionRows] = await Promise.all([
     canUsePersonas
       ? attempt('personas', { data: [], total: 0 }, () => spindle.personas.list({ limit: 200, userId }))
       : Promise.resolve({ data: [] as PersonaDTO[], total: 0 }),
@@ -349,6 +371,7 @@ async function loadDirectory(userId: string): Promise<TimelineDirectory> {
       ? attempt('character cards', { data: [], total: 0 }, () => loadAllCharacterCards(userId))
       : Promise.resolve({ data: [] as CharacterDTO[], total: 0 }),
     attempt('Council members', [] as CouncilMemberContext[], () => spindle.council.getMembers({ userId })),
+    attempt('Lumia DLC items', [] as LumiaItemDTO[], async () => (await spindle.dlc.getCatalog({ userId })).lumiaItems),
     canUseGeneration
       ? attempt('connection profiles', [] as ConnectionProfileDTO[], () => spindle.connections.list(userId))
       : Promise.resolve([] as ConnectionProfileDTO[]),
@@ -362,10 +385,14 @@ async function loadDirectory(userId: string): Promise<TimelineDirectory> {
   const personas = personaResult.data.map((persona) => makePersonaActor(persona, avatarUrls.get(persona.image_id ?? '') ?? null))
   const characters = characterResult.data.map((character) => makeCharacterActor(character, avatarUrls.get(character.image_id ?? '') ?? null))
   const council = councilMembers.map(makeCouncilActor)
+  const councilItemIds = new Set(councilMembers.map((member) => member.itemId))
+  const lumias = lumiaItems
+    .filter((item) => !councilItemIds.has(item.id))
+    .map(makeLumiaActor)
 
   return {
     personas,
-    replyActors: [...council, ...characters].sort((left, right) => left.name.localeCompare(right.name)),
+    replyActors: [...council, ...lumias, ...characters].sort((left, right) => left.name.localeCompare(right.name)),
     connections: connectionRows.map((connection) => ({
       id: connection.id,
       name: connection.name,
@@ -380,7 +407,7 @@ async function loadDirectory(userId: string): Promise<TimelineDirectory> {
 function normalizeActor(value: unknown): TimelineActor | null {
   if (!isRecord(value)) return null
   const kind = stringValue(value.kind)
-  if (kind !== 'persona' && kind !== 'character' && kind !== 'council') return null
+  if (kind !== 'persona' && kind !== 'character' && kind !== 'council' && kind !== 'lumia') return null
   const name = stringValue(value.name)
   const key = stringValue(value.key)
   if (!name || !key) return null
@@ -598,10 +625,10 @@ function getPersonaAuthor(directory: TimelineDirectory, requestedId: unknown, se
 }
 
 function getReplyActor(directory: TimelineDirectory, actorKey: unknown, fallbackActor?: TimelineActor): TimelineActor {
-  if (typeof actorKey !== 'string') throw new Error('Choose a character card or Council member first.')
+  if (typeof actorKey !== 'string') throw new Error('Choose an inviteable actor first.')
   const actor = directory.replyActors.find((candidate) => candidate.key === actorKey)
   if (actor) return actor
-  if (fallbackActor?.key === actorKey && (fallbackActor.kind === 'character' || fallbackActor.kind === 'council')) {
+  if (fallbackActor?.key === actorKey && fallbackActor.kind !== 'persona') {
     return fallbackActor
   }
   throw new Error('That timeline actor is no longer available.')
@@ -616,7 +643,7 @@ function getReplyingThreadActor(state: TimelineState, post: TimelinePost | null)
   while (cursor && !visited.has(cursor.id)) {
     const current = cursor
     visited.add(current.id)
-    if (current.author.kind === 'character' || current.author.kind === 'council') {
+    if (current.author.kind === 'character' || current.author.kind === 'council' || current.author.kind === 'lumia') {
       return current.author
     }
     cursor = current.replyToId ? postsById.get(current.replyToId) : undefined

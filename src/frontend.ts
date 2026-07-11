@@ -131,7 +131,7 @@ function relativeTime(timestamp: number): string {
 function actorMatchesSearch(actor: TimelineActor, query: string): boolean {
   const normalizedQuery = query.trim().toLocaleLowerCase()
   if (!normalizedQuery) return true
-  return [actor.name, actor.handle, actor.bio, actor.role]
+  return [actor.name, actor.handle, actor.bio, actor.profile, actor.role]
     .filter((value): value is string => Boolean(value))
     .join(' ')
     .toLocaleLowerCase()
@@ -266,7 +266,7 @@ function actorWhoOwnsThread(post: TimelinePost, state: TimelineSnapshot): Timeli
   while (cursor && !visited.has(cursor.id)) {
     const current: TimelinePost = cursor
     visited.add(current.id)
-    if (current.author.kind === 'character' || current.author.kind === 'council') {
+    if (current.author.kind === 'character' || current.author.kind === 'council' || current.author.kind === 'lumia') {
       return current.author
     }
     cursor = current.replyToId ? postsById.get(current.replyToId) : undefined
@@ -346,8 +346,8 @@ export function setup(ctx: SpindleFrontendContext) {
     title: 'Lumiverse Timeline',
     shortName: 'Weave',
     headerTitle: 'Timeline',
-    description: 'A private social timeline for your personas, Council, and character cards',
-    keywords: ['timeline', 'weave', 'tweet', 'social', 'council', 'character'],
+    description: 'A private social timeline for your personas, Lumia DLC items, Council, and character cards',
+    keywords: ['timeline', 'weave', 'tweet', 'social', 'lumia', 'dlc', 'council', 'character'],
     iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 4.01c-.7.35-1.46.58-2.25.69.81-.49 1.43-1.26 1.72-2.18-.76.45-1.6.78-2.5.96A3.9 3.9 0 0 0 12.22 6c0 .31.03.61.1.9A11.08 11.08 0 0 1 3.2 2.3a3.9 3.9 0 0 0 1.21 5.2 3.9 3.9 0 0 1-1.77-.49v.05c0 1.89 1.34 3.46 3.13 3.82a3.84 3.84 0 0 1-1.76.07 3.9 3.9 0 0 0 3.65 2.7A7.83 7.83 0 0 1 2.8 15.3c-.32 0-.63-.02-.94-.05a11.04 11.04 0 0 0 5.97 1.75c7.17 0 11.09-5.94 11.09-11.09 0-.17 0-.34-.01-.5A7.9 7.9 0 0 0 22 4.01Z"/></svg>',
   })
   const root = createElement('div', 'xtl-app')
@@ -995,7 +995,7 @@ export function setup(ctx: SpindleFrontendContext) {
       mentionPopover.hidden = false
       positionMentionPopover()
       if (!mentionMatches.length) {
-        mentionPopover.appendChild(createElement('p', 'xtl-mention-empty', 'No characters or Council members match.'))
+        mentionPopover.appendChild(createElement('p', 'xtl-mention-empty', 'No inviteable actors match.'))
         return
       }
       mentionMatches.forEach((actor, index) => {
@@ -1191,7 +1191,7 @@ export function setup(ctx: SpindleFrontendContext) {
     }
     const posts = orderedPosts(state.state.posts)
     if (!posts.length) {
-      feed.appendChild(createElement('div', 'xtl-empty', 'No weaves yet. Start the feed with a thought from your selected persona, or let a Council member or character card post first.'))
+      feed.appendChild(createElement('div', 'xtl-empty', 'No weaves yet. Start the feed with a thought from your selected persona, or let a Lumia, Council member, or character card post first.'))
       return feed
     }
     for (const { post, depth } of posts) feed.appendChild(renderPost(post, depth, state))
@@ -1262,7 +1262,7 @@ export function setup(ctx: SpindleFrontendContext) {
       const search = document.createElement('input')
       search.type = 'search'
       search.className = 'xtl-actor-search'
-      search.placeholder = 'Search actors by name, handle, role, or card…'
+      search.placeholder = 'Search actors by name, handle, role, or definition…'
       search.value = actorSearch
       search.setAttribute('aria-label', 'Search actors to invite')
       searchWrap.appendChild(search)
@@ -1317,12 +1317,12 @@ export function setup(ctx: SpindleFrontendContext) {
         'p',
         'xtl-roster-empty',
         missingCharacterPermission
-          ? 'Character-card access is not enabled for Timeline. Grant the Characters permission in Extensions, then refresh. Council members will appear here once they are added to your Council.'
-          : 'No character cards or active Council members are available for this account yet. Add one, then refresh this timeline.',
+          ? 'Character-card access is not enabled for Timeline. Grant the Characters permission in Extensions, then refresh. Lumia DLC items and active Council members can still appear here.'
+          : 'No character cards, Lumia DLC items, or active Council members are available for this account yet. Add one, then refresh this timeline.',
       ))
     }
     if (state.replyActors.length && !state.permissions.includes('characters')) {
-      accessHint = 'Character-card access is not enabled, so this list currently shows Council members only.'
+      accessHint = 'Character-card access is not enabled, so this list omits character cards.'
     }
     card.appendChild(list)
     if (accessHint) card.appendChild(createElement('p', 'xtl-roster-access', accessHint))
@@ -1341,7 +1341,7 @@ export function setup(ctx: SpindleFrontendContext) {
     const summary = createElement('summary', undefined, 'Timeline settings')
     details.appendChild(summary)
 
-    const copy = createElement('p', 'xtl-settings-copy', 'Choose a fast connection for background character and Council weaves. Your saved Timeline choice is used only by this extension.')
+    const copy = createElement('p', 'xtl-settings-copy', 'Choose a fast connection for background actor weaves. Your saved Timeline choice is used only by this extension.')
     details.appendChild(copy)
     const row = createElement('div', 'xtl-settings-row')
     const labels = createElement('div')
