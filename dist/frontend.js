@@ -1015,7 +1015,7 @@ function setup(ctx) {
     header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount);
     card.appendChild(header);
     const interval = `${state.state.settings.minActorWeaveIntervalMinutes}–${state.state.settings.maxActorWeaveIntervalMinutes} min`;
-    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `One invited actor is picked at random for a timeline turn every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Invite actors to let the timeline choose one at random for a turn every ${interval}.`));
+    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `One invited actor takes a turn from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Invite actors to add them to the randomized timeline rotation every ${interval}.`));
     const rosterList = createElement("div", "xtl-roster-list");
     if (rosterActors.length) {
       for (const actor of rosterActors) {

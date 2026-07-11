@@ -433,13 +433,17 @@ function normalizeState(value: unknown): TimelineState {
     intervalMinutes(settings.maxActorWeaveIntervalMinutes, fallback.settings.maxActorWeaveIntervalMinutes),
   )
   return {
-    version: 4,
+    version: 6,
     posts: Array.isArray(value.posts)
       ? value.posts.map(normalizePost).filter((post): post is TimelinePost => Boolean(post)).slice(0, MAX_POSTS)
       : [],
     rosterActorKeys: Array.isArray(value.rosterActorKeys)
       ? [...new Set(value.rosterActorKeys.filter((key): key is string => typeof key === 'string' && key.length > 0))].slice(0, MAX_ROSTER_ACTORS)
       : [],
+    rosterActorQueue: Array.isArray(value.rosterActorQueue)
+      ? [...new Set(value.rosterActorQueue.filter((key): key is string => typeof key === 'string' && key.length > 0))].slice(0, MAX_ROSTER_ACTORS)
+      : [],
+    rosterLastActorKey: typeof value.rosterLastActorKey === 'string' ? value.rosterLastActorKey : null,
     rosterActionHistory: Array.isArray(value.rosterActionHistory)
       ? value.rosterActionHistory
         .filter((action): action is TimelineRosterAction => action === 'weave' || action === 'reply' || action === 'react')
@@ -591,15 +595,38 @@ function getRosterActors(state: TimelineState, directory: TimelineDirectory): Ti
     .filter((actor): actor is TimelineActor => Boolean(actor))
 }
 
+function shuffled<T>(items: T[]): T[] {
+  const result = [...items]
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const replacement = Math.floor(Math.random() * (index + 1))
+    const current = result[index]
+    result[index] = result[replacement]
+    result[replacement] = current
+  }
+  return result
+}
+
+function takeNextRosterActor(state: TimelineState, actors: TimelineActor[]): TimelineActor {
+  const actorsByKey = new Map(actors.map((actor) => [actor.key, actor]))
+  state.rosterActorQueue = state.rosterActorQueue.filter((key) => actorsByKey.has(key))
+  if (!state.rosterActorQueue.length) {
+    state.rosterActorQueue = shuffled(actors.map((actor) => actor.key))
+    if (state.rosterActorQueue.length > 1 && state.rosterActorQueue[0] === state.rosterLastActorKey) {
+      const next = state.rosterActorQueue[1]
+      state.rosterActorQueue[1] = state.rosterActorQueue[0]
+      state.rosterActorQueue[0] = next
+    }
+  }
+  const actorKey = state.rosterActorQueue.shift()
+  const actor = actorKey ? actorsByKey.get(actorKey) : null
+  if (!actor) throw new Error('The actor roster is empty.')
+  state.rosterLastActorKey = actor.key
+  return actor
+}
+
 function uniqueShuffledActors(actors: TimelineActor[]): TimelineActor[] {
   const unique = [...new Map(actors.map((actor) => [actor.key, actor])).values()]
-  for (let index = unique.length - 1; index > 0; index -= 1) {
-    const replacement = Math.floor(Math.random() * (index + 1))
-    const current = unique[index]
-    unique[index] = unique[replacement]
-    unique[replacement] = current
-  }
-  return unique
+  return shuffled(unique)
 }
 
 function getPost(state: TimelineState, postId: unknown): TimelinePost {
@@ -903,7 +930,7 @@ function timelineEngagementMessages(
         `Choose the most fitting post from the supplied candidates and return only this exact tag layout, with its ID copied exactly: ${responseLayout}`,
         action === 'reply'
           ? 'Choose a post that genuinely merits a concise in-character response. Do not manufacture conflict.'
-          : 'Choose a post that genuinely merits a lightweight reaction. For react, choose exactly one supported reaction: ❤, ✨, 🔥, or 😂.',
+          : 'Choose a post that genuinely merits a lightweight reaction and a short written reply. For react, choose exactly one supported reaction: ❤, ✨, 🔥, or 😂. The backend will generate the accompanying reply as part of this turn.',
         'Do not include prose, explanation, or markdown.',
         `PROFILE:\n${actor.profile || actor.bio}`,
       ].join('\n\n'),
@@ -1139,14 +1166,16 @@ async function createScheduledRosterWeave(userId: string): Promise<void> {
 
   const actors = getRosterActors(state, directory)
   state.rosterActorKeys = actors.map((actor) => actor.key)
+  state.rosterActorQueue = state.rosterActorQueue.filter((key) => state.rosterActorKeys.includes(key))
   if (!actors.length) {
+    state.rosterLastActorKey = null
     state.nextRosterWeaveAt = null
     await saveState(state, userId)
     await sendState(userId, state, directory)
     return
   }
 
-  const actor = actors[Math.floor(Math.random() * actors.length)]
+  const actor = takeNextRosterActor(state, actors)
   const userPersona = getPersonaAuthor(directory, undefined, state.settings)
   sendActivity(userId, true, actor.name)
   try {
@@ -1184,6 +1213,7 @@ async function createScheduledRosterWeave(userId: string): Promise<void> {
         const reaction = engagement.reaction && REACTION_EMOJIS.includes(engagement.reaction as (typeof REACTION_EMOJIS)[number])
           ? engagement.reaction
           : REACTION_EMOJIS[Math.floor(Math.random() * REACTION_EMOJIS.length)]
+        await createActorReply(state, directory, target, actor.key, userId, actor, false)
         addActorReaction(target, reaction, actor.key)
         recordRosterAction(state, action)
       }
@@ -1324,6 +1354,7 @@ async function toggleRosterActor(payload: UnknownRecord, userId: string): Promis
     }
     state.rosterActorKeys.push(actor.key)
   }
+  state.rosterActorQueue = []
 
   if (!state.rosterActorKeys.length) {
     state.nextRosterWeaveAt = null

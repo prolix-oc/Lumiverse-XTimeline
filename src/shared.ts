@@ -68,9 +68,11 @@ export interface TimelineSettings {
 }
 
 export interface TimelineState {
-  version: 4
+  version: 6
   posts: TimelinePost[]
   rosterActorKeys: string[]
+  rosterActorQueue: string[]
+  rosterLastActorKey: string | null
   rosterActionHistory: TimelineRosterAction[]
   nextRosterWeaveAt: number | null
   settings: TimelineSettings
@@ -95,9 +97,11 @@ export interface TimelineSnapshot {
 
 export function createEmptyTimelineState(): TimelineState {
   return {
-    version: 4,
+    version: 6,
     posts: [],
     rosterActorKeys: [],
+    rosterActorQueue: [],
+    rosterLastActorKey: null,
     rosterActionHistory: [],
     nextRosterWeaveAt: null,
     settings: {

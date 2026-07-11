@@ -1154,8 +1154,8 @@ export function setup(ctx: SpindleFrontendContext) {
       'p',
       'xtl-roster-copy',
       rosterActors.length
-        ? `One invited actor is picked at random for a timeline turn every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.`
-        : `Invite actors to let the timeline choose one at random for a turn every ${interval}.`,
+        ? `One invited actor takes a turn from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.`
+        : `Invite actors to add them to the randomized timeline rotation every ${interval}.`,
     ))
 
     const rosterList = createElement('div', 'xtl-roster-list')

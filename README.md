@@ -6,7 +6,7 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 
 - A global **Timeline** drawer tab and a **Weave current chat** action in the composer. It publishes the typed weave verbatim as the selected persona, attaches the active chat as private context, and automatically invites that chat's character to respond.
 - Persona-authored weaves, threaded replies, and lightweight reactions.
-- An invite-only actor roster: invited Council members and character cards take randomized, configurable timeline turns. The backend balances original weaves, replies, and reactions across recent eligible turns; an explicit **Weave now** option remains available for one-off posts.
+- An invite-only actor roster: invited Council members and character cards take turns from a shuffled rotation, so each invited actor gets one turn before the rotation repeats. The backend also balances original weaves, replies, and reactions across recent eligible turns; an explicit **Weave now** option remains available for one-off posts.
 - Twitter-style `@` mentions for Council members and character cards, including a removable multi-mention stack and randomized multi-actor reply order.
 - Character-led thread replies: when someone replies beneath an actor's weave, the nearest actor in that thread responds in character.
 - Council members and character cards as timeline actors, including actor-originated weaves and replies.
