@@ -301,9 +301,10 @@ function setup(ctx) {
   let knownActorWeaveIds = null;
   let newActorWeaveCount = 0;
   let timelineIsPastTop = false;
+  let activeView = "timeline";
   let activeDirectThreadId = null;
   let dmNewThreadOpen = false;
-  let directMessagesVisible = false;
+  let unreadDirectMessageCount = 0;
   let selectedDirectActorKey = "";
   let pendingDirectActorKey = null;
   let dmDraft = "";
@@ -325,23 +326,17 @@ function setup(ctx) {
   });
   const root = createElement("div", "xtl-app");
   tab.root.replaceChildren(root);
-  const dmsTab = ctx.ui.registerDrawerTab({
-    id: "direct-messages",
-    title: "Lumiverse Messages",
-    shortName: "DMs",
-    headerTitle: "Messages",
-    description: "Private direct-message threads with Lumiverse actors",
-    keywords: ["dm", "dms", "message", "messages", "inbox", "direct message", "actor"],
-    iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M7 9h10M7 13h6"/></svg>'
-  });
-  const dmsRoot = createElement("div", "xtl-app xtl-dms-app");
-  dmsTab.root.replaceChildren(dmsRoot);
   const removeStyle = ctx.dom.addStyle(`
     .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
     .xtl-header { position: sticky; top: 4px; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 4px -6px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border: 1px solid color-mix(in srgb, var(--xtl-line) 88%, transparent); border-radius: 12px; backdrop-filter: blur(16px); }
     .xtl-header-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #f5f8fa; font-size: 20px; font-weight: 900; line-height: 1; }
     .xtl-title { flex: 1; margin: 0; font-size: 18px; line-height: 1.1; letter-spacing: -.02em; font-weight: 850; }
     .xtl-header-refresh, .xtl-header-jump { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-color: transparent; font-size: 18px; }
+    .xtl-view-nav { display: flex; flex: 1; align-self: stretch; align-items: stretch; gap: 2px; min-width: 0; }
+    .xtl-view-nav-button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--xtl-muted); padding: 0 9px; font: inherit; font-size: 13px; font-weight: 760; cursor: pointer; }
+    .xtl-view-nav-button:hover { color: #eaf6ff; background: color-mix(in srgb, var(--xtl-blue) 9%, transparent); }
+    .xtl-view-nav-button--active { border-bottom-color: var(--xtl-blue); color: #f4f7fa; }
+    .xtl-view-nav-badge { display: grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--xtl-blue); color: #fff; font-size: 10px; font-weight: 850; }
     .xtl-card { background: var(--xtl-surface); border: 1px solid var(--xtl-line); border-radius: 16px; margin: 12px 0; overflow: visible; box-shadow: 0 10px 26px rgb(0 0 0 / 11%); }
     .xtl-composer { padding: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--xtl-blue) 10%, var(--xtl-surface)), var(--xtl-surface) 45%); }
     .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 9px; }
@@ -418,9 +413,8 @@ function setup(ctx) {
     .xtl-post-body { margin: 8px 0 11px 50px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #f0f4f7; }
     .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
     .xtl-post-gif { display: block; width: calc(100% - 50px); max-width: none; height: auto; margin: 10px 0 20px 50px; border-radius: 12px; }
-    .xtl-dms-app { max-width: 980px; }
-    .xtl-dm-shell { display: grid; grid-template-columns: minmax(225px, 34%) minmax(0, 1fr); min-height: min(650px, calc(100vh - 110px)); overflow: hidden; }
-    .xtl-dm-inbox { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--xtl-line); background: #0b0e12; }
+    .xtl-dm-shell { min-height: min(640px, calc(100vh - 118px)); overflow: hidden; }
+    .xtl-dm-inbox { display: flex; flex-direction: column; min-width: 0; min-height: min(560px, calc(100vh - 170px)); background: #0b0e12; }
     .xtl-dm-inbox-header, .xtl-dm-thread-header { display: flex; align-items: center; gap: 9px; min-height: 58px; box-sizing: border-box; padding: 11px 13px; border-bottom: 1px solid var(--xtl-line); }
     .xtl-dm-inbox-title { flex: 1; margin: 0; font-size: 17px; letter-spacing: -.02em; }
     .xtl-dm-new { display: grid; place-items: center; width: 33px; height: 33px; padding: 0; border-radius: 50%; font-size: 18px; }
@@ -435,7 +429,7 @@ function setup(ctx) {
     .xtl-dm-list-preview { overflow: hidden; color: var(--xtl-muted); text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; font-size: 12px; }
     .xtl-dm-unread { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--xtl-blue); color: #fff; font-size: 10px; font-weight: 850; }
     .xtl-dm-empty-inbox { margin: 0; padding: 27px 18px; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; text-align: center; }
-    .xtl-dm-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--xtl-surface); }
+    .xtl-dm-main { display: flex; flex-direction: column; min-width: 0; min-height: min(640px, calc(100vh - 118px)); background: var(--xtl-surface); }
     .xtl-dm-thread-header { flex: 0 0 auto; }
     .xtl-dm-thread-title { min-width: 0; flex: 1; }
     .xtl-dm-thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
@@ -523,7 +517,7 @@ function setup(ctx) {
     .xtl-number-input { width: 64px; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 7px 6px; font: inherit; font-size: 12px; font-weight: 650; }
     .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 680px) { .xtl-dms-app { padding-inline: 9px; } .xtl-dm-shell { display: block; min-height: 0; } .xtl-dm-inbox { min-height: 440px; border-right: 0; } .xtl-dm-main { min-height: calc(100vh - 120px); } .xtl-dm-shell--thread-open .xtl-dm-inbox, .xtl-dm-shell--new-thread .xtl-dm-inbox { display: none; } .xtl-dm-shell:not(.xtl-dm-shell--thread-open):not(.xtl-dm-shell--new-thread) .xtl-dm-main { display: none; } .xtl-dm-message-row { max-width: 93%; } }
+    @media (max-width: 680px) { .xtl-dm-shell, .xtl-dm-main { min-height: calc(100vh - 118px); } .xtl-dm-inbox { min-height: calc(100vh - 170px); } .xtl-dm-message-row { max-width: 93%; } }
     @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } .xtl-dm-gif-search, .xtl-dm-gif-chip { margin-left: 0; max-width: 100%; } }
   `);
   const selectedPersona = () => {
@@ -576,7 +570,23 @@ function setup(ctx) {
     const header = createElement("header", "xtl-header");
     const mark = createElement("span", "xtl-header-mark", "\uD835\uDD4F");
     mark.setAttribute("aria-hidden", "true");
-    const title = createElement("h2", "xtl-title", "Timeline");
+    const nav = createElement("nav", "xtl-view-nav");
+    nav.setAttribute("aria-label", "Timeline views");
+    const selectView = (view) => {
+      activeView = view;
+      if (view === "dms" && activeDirectThreadId)
+        send({ type: "read_direct_thread", threadId: activeDirectThreadId });
+      render();
+    };
+    const timelineView = button("Timeline", `xtl-view-nav-button${activeView === "timeline" ? " xtl-view-nav-button--active" : ""}`);
+    timelineView.setAttribute("aria-current", activeView === "timeline" ? "page" : "false");
+    timelineView.addEventListener("click", () => selectView("timeline"));
+    const messagesView = button("Messages", `xtl-view-nav-button${activeView === "dms" ? " xtl-view-nav-button--active" : ""}`);
+    messagesView.setAttribute("aria-current", activeView === "dms" ? "page" : "false");
+    if (unreadDirectMessageCount)
+      messagesView.appendChild(createElement("span", "xtl-view-nav-badge", unreadDirectMessageCount > 99 ? "99+" : String(unreadDirectMessageCount)));
+    messagesView.addEventListener("click", () => selectView("dms"));
+    nav.append(timelineView, messagesView);
     const jumpToManagement = button("↓", "xtl-button xtl-header-jump");
     jumpToManagement.title = "Jump to followed actors and settings";
     jumpToManagement.setAttribute("aria-label", "Jump to followed actors and settings");
@@ -585,7 +595,10 @@ function setup(ctx) {
     refresh.title = "Refresh timeline";
     refresh.setAttribute("aria-label", "Refresh timeline");
     refresh.addEventListener("click", () => send({ type: "load_timeline" }));
-    header.append(mark, title, jumpToManagement, refresh);
+    header.append(mark, nav);
+    if (activeView === "timeline")
+      header.appendChild(jumpToManagement);
+    header.appendChild(refresh);
     return header;
   };
   const renderError = () => {
@@ -1241,8 +1254,7 @@ function setup(ctx) {
   });
   const activeDirectThread = () => snapshot && activeDirectThreadId ? snapshot.state.directThreads.find((thread) => thread.id === activeDirectThreadId) ?? null : null;
   const updateDmBadge = (state) => {
-    const unread = state.state.directThreads.reduce((total, thread) => total + unreadDirectMessages(thread), 0);
-    dmsTab.setBadge(unread ? String(unread) : null);
+    unreadDirectMessageCount = state.state.directThreads.reduce((total, thread) => total + unreadDirectMessages(thread), 0);
   };
   const renderDmError = () => {
     if (!dmError)
@@ -1270,7 +1282,7 @@ function setup(ctx) {
   }
   function openDirectConversation(actorKey) {
     const existing = snapshot?.state.directThreads.find((thread) => thread.actor.key === actorKey);
-    dmsTab.activate();
+    activeView = "dms";
     if (existing) {
       selectDirectThread(existing.id);
       return;
@@ -1287,6 +1299,14 @@ function setup(ctx) {
       personaId: selectedPersona()?.sourceId ?? null
     });
   }
+  function composeDirectMessage() {
+    activeView = "dms";
+    activeDirectThreadId = null;
+    dmNewThreadOpen = true;
+    selectedDirectActorKey = "";
+    dmError = "";
+    renderDms();
+  }
   const renderDirectInbox = (state) => {
     const inbox = createElement("aside", "xtl-dm-inbox");
     const heading = createElement("div", "xtl-dm-inbox-header");
@@ -1295,19 +1315,20 @@ function setup(ctx) {
     start.title = "New message";
     start.setAttribute("aria-label", "New message");
     start.disabled = dmBusy || !state.permissions.includes("generation") || state.replyActors.length === 0;
-    start.addEventListener("click", () => {
-      activeDirectThreadId = null;
-      dmNewThreadOpen = true;
-      selectedDirectActorKey = "";
-      dmError = "";
-      renderDms();
-    });
+    start.addEventListener("click", composeDirectMessage);
     heading.appendChild(start);
     inbox.appendChild(heading);
     const list = createElement("div", "xtl-dm-list");
     const threads = directThreads(state);
     if (!threads.length) {
       list.appendChild(createElement("p", "xtl-dm-empty-inbox", "No direct messages yet. Start one and the actor will send the opening note here."));
+      const start2 = button("New message", "xtl-button xtl-button--primary");
+      start2.disabled = dmBusy || !state.permissions.includes("generation") || state.replyActors.length === 0;
+      start2.addEventListener("click", composeDirectMessage);
+      const action = createElement("div");
+      action.style.padding = "0 18px 24px";
+      action.appendChild(start2);
+      list.appendChild(action);
     }
     for (const thread of threads) {
       const lastMessage = thread.messages[thread.messages.length - 1];
@@ -1482,6 +1503,18 @@ function setup(ctx) {
   };
   const renderDirectWelcome = (state) => {
     const main = createElement("section", "xtl-dm-main");
+    const header = createElement("div", "xtl-dm-thread-header");
+    const back = button("‹", "xtl-button xtl-button--quiet");
+    back.title = "Back to messages";
+    back.setAttribute("aria-label", "Back to messages");
+    back.addEventListener("click", () => {
+      activeDirectThreadId = null;
+      dmNewThreadOpen = false;
+      selectedDirectActorKey = "";
+      renderDms();
+    });
+    header.append(back, createElement("div", "xtl-dm-thread-name", "New message"));
+    main.appendChild(header);
     const welcome = createElement("div", "xtl-dm-welcome");
     const newThread = createElement("div", "xtl-dm-new-thread");
     const copy = createElement("div", "xtl-dm-welcome-copy");
@@ -1517,18 +1550,23 @@ function setup(ctx) {
     main.appendChild(welcome);
     return main;
   };
-  const renderDms = () => {
-    disposeActorPickerPortal?.();
-    disposeActorPickerPortal = null;
-    dmsRoot.replaceChildren();
-    if (!snapshot) {
-      dmsRoot.appendChild(createElement("div", "xtl-loading", "Loading your messages…"));
-      return;
-    }
+  const renderDmsContent = () => {
+    if (!snapshot)
+      return createElement("div", "xtl-loading", "Loading your messages…");
     const activeThread = activeDirectThread();
-    const shell = createElement("div", `xtl-card xtl-dm-shell${activeThread ? " xtl-dm-shell--thread-open" : ""}${dmNewThreadOpen ? " xtl-dm-shell--new-thread" : ""}`);
-    shell.append(renderDirectInbox(snapshot), activeThread ? renderDirectThread(activeThread, snapshot) : renderDirectWelcome(snapshot));
-    dmsRoot.appendChild(shell);
+    const shell = createElement("div", "xtl-card xtl-dm-shell");
+    if (activeThread) {
+      shell.appendChild(renderDirectThread(activeThread, snapshot));
+    } else if (dmNewThreadOpen) {
+      shell.appendChild(renderDirectWelcome(snapshot));
+    } else {
+      shell.appendChild(renderDirectInbox(snapshot));
+    }
+    return shell;
+  };
+  const renderDms = () => {
+    if (activeView === "dms")
+      render();
   };
   const renderTimeline = (state) => {
     const feed = createElement("section", "xtl-card");
@@ -1871,13 +1909,17 @@ function setup(ctx) {
     sliderHandles.forEach((h) => h.destroy());
     sliderHandles = [];
     root.replaceChildren(renderHeader());
+    if (!snapshot) {
+      root.appendChild(createElement("div", "xtl-loading", activeView === "dms" ? "Loading your messages…" : "Loading your timeline…"));
+      return;
+    }
+    if (activeView === "dms") {
+      root.appendChild(renderDmsContent());
+      return;
+    }
     const renderedError = renderError();
     if (renderedError)
       root.appendChild(renderedError);
-    if (!snapshot) {
-      root.appendChild(createElement("div", "xtl-loading", "Loading your timeline…"));
-      return;
-    }
     if (busy) {
       root.appendChild(createElement("div", "xtl-notice", busyActorName ? `${busyActorName} is weaving…` : "Updating the timeline…"));
     }
@@ -1915,9 +1957,8 @@ function setup(ctx) {
       if (inviteActorKey && !snapshot.replyActors.some((actor) => actor.key === inviteActorKey))
         inviteActorKey = "";
       render();
-      renderDms();
       const openThread = activeDirectThread();
-      if (directMessagesVisible && openThread && unreadDirectMessages(openThread)) {
+      if (activeView === "dms" && openThread && unreadDirectMessages(openThread)) {
         send({ type: "read_direct_thread", threadId: openThread.id });
       }
       renderFollowModal();
@@ -1980,17 +2021,7 @@ function setup(ctx) {
     render();
     focusComposer();
   });
-  const unsubscribeActivate = tab.onActivate(() => {
-    directMessagesVisible = false;
-    send({ type: "load_timeline" });
-  });
-  const unsubscribeDmsActivate = dmsTab.onActivate(() => {
-    directMessagesVisible = true;
-    send({ type: "load_timeline" });
-    if (activeDirectThreadId)
-      send({ type: "read_direct_thread", threadId: activeDirectThreadId });
-    renderDms();
-  });
+  const unsubscribeActivate = tab.onActivate(() => send({ type: "load_timeline" }));
   const document2 = tab.root.ownerDocument;
   const onScroll = (event) => {
     const target = event.target;
@@ -1999,7 +2030,6 @@ function setup(ctx) {
   };
   document2.addEventListener("scroll", onScroll, { capture: true, passive: true });
   render();
-  renderDms();
   send({ type: "load_timeline" });
   readyGate.release();
   return () => {
@@ -2020,13 +2050,10 @@ function setup(ctx) {
     unsubscribeMessages();
     unsubscribeInputAction();
     unsubscribeActivate();
-    unsubscribeDmsActivate();
     inputAction.destroy();
     tab.destroy();
-    dmsTab.destroy();
     removeStyle();
     root.replaceChildren();
-    dmsRoot.replaceChildren();
     ctx.dom.cleanup();
   };
 }
