@@ -100,8 +100,9 @@ function compact(text, limit) {
   return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
 }
 function cleanWeave(text, limit = MAX_WEAVE_LENGTH) {
-  return text.replace(/\r\n/g, `
-`).replace(/\u0000/g, "").trim().slice(0, limit).trim();
+  const cleaned = text.replace(/\r\n/g, `
+`).replace(/\u0000/g, "").trim();
+  return Array.from(cleaned).slice(0, limit).join("").trim();
 }
 function cleanDirectMessage(text) {
   return cleanWeave(text, MAX_DIRECT_MESSAGE_LENGTH);
@@ -766,10 +767,12 @@ async function resolveGif(query) {
 async function extractAndResolveGif(content) {
   let cleanContent = content;
   let reaction;
-  const match = content.match(/<gif>(.*?)<\/gif>/is);
-  const gifUrl = match?.[1] ? await resolveGif(match[1]) : undefined;
-  if (match)
-    cleanContent = content.replace(/<gif>.*?<\/gif>/is, "").trim();
+  const closedGifTag = content.match(/<gif>\s*([\s\S]*?)\s*<\/gif>/i);
+  const incompleteGifTag = closedGifTag ? null : content.match(/<gif>\s*([^<>\r\n]+?)\s*(?:>|$)/i);
+  const gifTag = closedGifTag ?? incompleteGifTag;
+  const gifUrl = gifTag?.[1] ? await resolveGif(gifTag[1]) : undefined;
+  if (gifTag)
+    cleanContent = content.replace(gifTag[0], "").trim();
   const reactionMatch = cleanContent.match(/<reaction>\s*(.*?)\s*<\/reaction>/is);
   const requestedReaction = reactionMatch?.[1].trim().replace(/[\uFE0E\uFE0F]/g, "");
   if (requestedReaction && REACTION_EMOJIS.includes(requestedReaction)) {

@@ -108,6 +108,9 @@ function relativeTime(timestamp) {
 function gifDisplayUrl(gifUrl, highQuality) {
   return highQuality ? gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAC/") : gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAM/");
 }
+function limitCharacters(text, limit) {
+  return Array.from(text).slice(0, limit).join("");
+}
 function actorMatchesSearch(actor, query) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   if (!normalizedQuery)
@@ -327,7 +330,7 @@ function setup(ctx) {
   const root = createElement("div", "xtl-app");
   tab.root.replaceChildren(root);
   const removeStyle = ctx.dom.addStyle(`
-    .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
+    .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; --xtl-keyboard-inset: 0px; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
     .xtl-header { position: sticky; top: 4px; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 4px -6px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border: 1px solid color-mix(in srgb, var(--xtl-line) 88%, transparent); border-radius: 12px; backdrop-filter: blur(16px); }
     .xtl-header-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #f5f8fa; font-size: 20px; font-weight: 900; line-height: 1; }
     .xtl-title { flex: 1; margin: 0; font-size: 18px; line-height: 1.1; letter-spacing: -.02em; font-weight: 850; }
@@ -413,8 +416,8 @@ function setup(ctx) {
     .xtl-post-body { margin: 8px 0 11px 50px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #f0f4f7; }
     .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
     .xtl-post-gif { display: block; width: calc(100% - 50px); max-width: none; height: auto; margin: 10px 0 20px 50px; border-radius: 12px; }
-    .xtl-dm-shell { min-height: min(640px, calc(100vh - 118px)); overflow: hidden; }
-    .xtl-dm-inbox { display: flex; flex-direction: column; min-width: 0; min-height: min(560px, calc(100vh - 170px)); background: #0b0e12; }
+    .xtl-dm-shell { height: calc(100vh - 170px - var(--xtl-keyboard-inset)); min-height: 300px; overflow: hidden; }
+    .xtl-dm-inbox { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; background: #0b0e12; }
     .xtl-dm-inbox-header, .xtl-dm-thread-header { display: flex; align-items: center; gap: 9px; min-height: 58px; box-sizing: border-box; padding: 11px 13px; border-bottom: 1px solid var(--xtl-line); }
     .xtl-dm-inbox-title { flex: 1; margin: 0; font-size: 17px; letter-spacing: -.02em; }
     .xtl-dm-new { display: grid; place-items: center; width: 33px; height: 33px; padding: 0; border-radius: 50%; font-size: 18px; }
@@ -429,7 +432,7 @@ function setup(ctx) {
     .xtl-dm-list-preview { overflow: hidden; color: var(--xtl-muted); text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; font-size: 12px; }
     .xtl-dm-unread { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--xtl-blue); color: #fff; font-size: 10px; font-weight: 850; }
     .xtl-dm-empty-inbox { margin: 0; padding: 27px 18px; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; text-align: center; }
-    .xtl-dm-main { display: flex; flex-direction: column; min-width: 0; min-height: min(640px, calc(100vh - 118px)); background: var(--xtl-surface); }
+    .xtl-dm-main { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; background: var(--xtl-surface); }
     .xtl-dm-thread-header { flex: 0 0 auto; }
     .xtl-dm-thread-title { min-width: 0; flex: 1; }
     .xtl-dm-thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
@@ -517,7 +520,7 @@ function setup(ctx) {
     .xtl-number-input { width: 64px; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 7px 6px; font: inherit; font-size: 12px; font-weight: 650; }
     .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 680px) { .xtl-dm-shell, .xtl-dm-main { min-height: calc(100vh - 118px); } .xtl-dm-inbox { min-height: calc(100vh - 170px); } .xtl-dm-message-row { max-width: 93%; } }
+    @media (max-width: 680px) { .xtl-dm-message-row { max-width: 93%; } }
     @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } .xtl-dm-gif-search, .xtl-dm-gif-chip { margin-left: 0; max-width: 100%; } }
   `);
   const selectedPersona = () => {
@@ -532,6 +535,22 @@ function setup(ctx) {
     return snapshot.state.posts.find((post) => post.id === replyToId) ?? null;
   };
   const send = (payload) => ctx.sendToBackend(payload);
+  const positionDmComposerForKeyboard = () => {
+    requestAnimationFrame(() => {
+      if (activeView !== "dms")
+        return;
+      const thread = root.querySelector(".xtl-dm-thread-scroll");
+      if (thread)
+        thread.scrollTop = thread.scrollHeight;
+      root.querySelector(".xtl-dm-composer")?.scrollIntoView({ block: "end", behavior: "smooth" });
+    });
+  };
+  const applyKeyboardPresentation = (keyboard) => {
+    const inset = keyboard.visible ? Math.max(0, keyboard.insetBottom) : 0;
+    root.style.setProperty("--xtl-keyboard-inset", `${inset}px`);
+    if (keyboard.visible)
+      positionDmComposerForKeyboard();
+  };
   const updateNewWeavePill = () => {
     if (!newWeavePill)
       return;
@@ -1353,12 +1372,15 @@ function setup(ctx) {
     inbox.appendChild(list);
     return inbox;
   };
-  const renderDirectMessage = (message, state) => {
+  const renderDirectMessage = (message, state, options = {}) => {
     const outgoing = message.direction === "outgoing";
     const row = createElement("div", `xtl-dm-message-row${outgoing ? " xtl-dm-message-row--outgoing" : ""}`);
     const bubble = createElement("div", "xtl-dm-bubble");
-    if (message.content)
+    if (message.content) {
       bubble.appendChild(createElement("div", "xtl-dm-bubble-copy", message.content));
+    } else if (options.pendingGifQuery) {
+      bubble.appendChild(createElement("div", "xtl-dm-bubble-copy", `GIF: ${options.pendingGifQuery}`));
+    }
     if (message.gifUrl) {
       const image = document2.createElement("img");
       image.className = "xtl-dm-gif";
@@ -1392,8 +1414,11 @@ function setup(ctx) {
     textarea.placeholder = `Message ${thread.actor.name}`;
     textarea.value = dmDraft;
     textarea.disabled = dmBusy;
+    textarea.addEventListener("focus", positionDmComposerForKeyboard);
     textarea.addEventListener("input", () => {
-      dmDraft = textarea.value.slice(0, MAX_DIRECT_MESSAGE_LENGTH);
+      dmDraft = limitCharacters(textarea.value, MAX_DIRECT_MESSAGE_LENGTH);
+      if (textarea.value !== dmDraft)
+        textarea.value = dmDraft;
       sendButton.disabled = dmBusy || !dmDraft.trim() && !dmGifQuery;
     });
     textarea.addEventListener("keydown", (event) => {
@@ -1405,9 +1430,30 @@ function setup(ctx) {
     const sendButton = button("Send", "xtl-button xtl-button--primary xtl-dm-send");
     sendButton.disabled = dmBusy || !dmDraft.trim() && !dmGifQuery;
     sendButton.addEventListener("click", () => {
-      const content = dmDraft;
-      const gifQuery = dmGifQuery;
-      pendingDirectMessage = { threadId: thread.id, content, gifQuery };
+      const content = dmDraft.trim();
+      const gifQuery = dmGifQuery.trim();
+      const author = selectedPersona() ?? thread.messages.find((message) => message.direction === "outgoing")?.author ?? {
+        key: "persona:timeline_user",
+        kind: "persona",
+        sourceId: "",
+        name: "You",
+        handle: "you",
+        avatarUrl: null,
+        bio: "Timeline persona",
+        profile: "The person writing on this private timeline."
+      };
+      pendingDirectMessage = {
+        threadId: thread.id,
+        content,
+        gifQuery,
+        optimisticMessage: {
+          id: `optimistic:${crypto.randomUUID()}`,
+          author,
+          direction: "outgoing",
+          content,
+          createdAt: Date.now()
+        }
+      };
       dmDraft = "";
       dmGifQuery = "";
       dmGifSearch = "";
@@ -1490,10 +1536,16 @@ function setup(ctx) {
     if (dmBusy)
       main.appendChild(createElement("div", "xtl-notice xtl-dm-thread-notice", `${dmBusyActorName ?? thread.actor.name} is replying…`));
     const scroll = createElement("div", "xtl-dm-thread-scroll");
-    if (!thread.messages.length)
+    const optimisticMessage = pendingDirectMessage?.threadId === thread.id ? pendingDirectMessage : null;
+    const messages = [...thread.messages];
+    if (optimisticMessage && !messages.some((message) => message.direction === "outgoing" && message.content === optimisticMessage.content)) {
+      messages.push(optimisticMessage.optimisticMessage);
+    }
+    if (!messages.length)
       scroll.appendChild(createElement("p", "xtl-dm-empty-inbox", "This conversation has no messages yet."));
-    for (const message of thread.messages)
-      scroll.appendChild(renderDirectMessage(message, state));
+    for (const message of messages) {
+      scroll.appendChild(renderDirectMessage(message, state, message.id === optimisticMessage?.optimisticMessage.id ? { pendingGifQuery: optimisticMessage.gifQuery } : {}));
+    }
     main.appendChild(scroll);
     main.appendChild(renderDirectComposer(thread, state));
     requestAnimationFrame(() => {
@@ -2029,6 +2081,8 @@ function setup(ctx) {
       updateTimelineScrollState();
   };
   document2.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  applyKeyboardPresentation(ctx.ui.events.getKeyboardState());
+  const unsubscribeKeyboardPresentation = ctx.ui.events.onKeyboardChange(applyKeyboardPresentation);
   render();
   send({ type: "load_timeline" });
   readyGate.release();
@@ -2043,6 +2097,7 @@ function setup(ctx) {
     followModal?.dismiss();
     followModal = null;
     document2.removeEventListener("scroll", onScroll, true);
+    unsubscribeKeyboardPresentation();
     personaPicker?.destroy();
     personaPicker = null;
     sliderHandles.forEach((h) => h.destroy());
