@@ -103,6 +103,20 @@ interface ComposerMentionQuery {
   query: string
 }
 
+interface ActorReplyPickerOptions {
+  value: string
+  disabled: boolean
+  clearable?: boolean
+  onChange: (actorKey: string) => void
+}
+
+interface ReactionActorDetail {
+  key: string
+  name: string
+  handle: string
+  avatarUrl: string | null
+}
+
 function mentionQueryAtCursor(text: string, cursor: number): ComposerMentionQuery | null {
   const beforeCursor = text.slice(0, cursor)
   const match = /(^|\s)@([a-zA-Z0-9_]*)$/.exec(beforeCursor)
@@ -140,7 +154,7 @@ function actorLeading(actor: TimelineActor) {
   }
 }
 
-function actorAvatar(actor: TimelineActor, size = 'normal'): HTMLElement {
+function actorAvatar(actor: Pick<TimelineActor, 'name' | 'avatarUrl'>, size = 'normal'): HTMLElement {
   const holder = createElement('div', `xtl-avatar xtl-avatar--${size}`)
   holder.title = actor.name
   if (actor.avatarUrl) {
@@ -257,6 +271,8 @@ export function setup(ctx: SpindleFrontendContext) {
   let personaPicker: SpindleSelectHandle | null = null
   let sliderHandles: any[] = []
   let disposeMentionPortal: (() => void) | null = null
+  let disposeActorPickerPortal: (() => void) | null = null
+  let disposeReactionTooltip: (() => void) | null = null
 
   const tab = ctx.ui.registerDrawerTab({
     id: 'timeline',
@@ -303,7 +319,24 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-mention-stack[hidden] { display: none; }
     .xtl-mention-chip { border: 1px solid color-mix(in srgb, var(--xtl-blue) 50%, #39424d); border-radius: 999px; background: var(--xtl-blue-soft); color: #b9e0ff; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
     .xtl-mention-chip:hover { color: #fff; border-color: var(--xtl-blue); }
+    .xtl-invite-picker { min-width: 0; }
+    .xtl-invite-picker-trigger { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .xtl-select { max-width: 210px; min-width: 0; padding: 7px 30px 7px 10px; font-size: 12px; font-weight: 600; }
+    .xtl-actor-picker-popover { position: fixed; z-index: 2147483647; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #3a4148; border-radius: 13px; background: #10151c; box-shadow: 0 12px 28px rgb(0 0 0 / 38%); padding: 5px; }
+    .xtl-actor-picker-search { width: 100%; box-sizing: border-box; flex: 0 0 auto; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 8px 10px; font: inherit; font-size: 12px; outline: none; }
+    .xtl-actor-picker-search::placeholder { color: #75808c; }
+    .xtl-actor-picker-search:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); }
+    .xtl-actor-picker-results { min-height: 0; overflow-y: auto; margin-top: 5px; }
+    .xtl-actor-picker-option { display: flex; align-items: center; width: 100%; gap: 9px; box-sizing: border-box; border: 0; border-radius: 9px; background: transparent; color: #f4f7fa; padding: 7px; cursor: pointer; font: inherit; text-align: left; }
+    .xtl-actor-picker-option:hover, .xtl-actor-picker-option--selected { background: var(--xtl-blue-soft); }
+    .xtl-actor-picker-option:focus-visible { outline: 2px solid var(--xtl-blue); outline-offset: -2px; }
+    .xtl-actor-picker-copy { min-width: 0; flex: 1; }
+    .xtl-actor-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
+    .xtl-actor-picker-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 1px; }
+    .xtl-actor-picker-empty, .xtl-actor-picker-summary { margin: 0; padding: 9px; color: var(--xtl-muted); font-size: 12px; line-height: 1.35; }
+    .xtl-actor-picker-summary { padding-top: 5px; }
+    .xtl-actor-picker-clear { display: block; width: 100%; box-sizing: border-box; margin-top: 5px; border: 0; border-radius: 9px; background: transparent; color: var(--xtl-muted); padding: 7px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; text-align: left; }
+    .xtl-actor-picker-clear:hover, .xtl-actor-picker-clear:focus-visible { background: var(--xtl-blue-soft); color: #eaf6ff; outline: none; }
     .xtl-composer-controls { justify-content: space-between; margin-top: 11px; flex-wrap: wrap; }
     .xtl-composer-actions { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
     .xtl-counter { margin-left: auto; font-size: 12px; color: var(--xtl-muted); font-variant-numeric: tabular-nums; }
@@ -340,6 +373,14 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-post-actions .xtl-button:hover:not(:disabled) { color: var(--xtl-blue); background: var(--xtl-blue-soft); }
     .xtl-reaction { min-width: 40px; }
     .xtl-reaction--active { color: #ff6b9a !important; background: color-mix(in srgb, #ff6b9a 14%, transparent) !important; }
+    .xtl-reaction-tooltip { position: fixed; z-index: 2147483647; width: min(260px, calc(100vw - 16px)); box-sizing: border-box; border: 1px solid #3a4148; border-radius: 12px; background: #10151c; box-shadow: 0 12px 28px rgb(0 0 0 / 38%); padding: 9px; }
+    .xtl-reaction-tooltip-title { margin: 0 0 7px; color: var(--xtl-muted); font-size: 11px; font-weight: 700; }
+    .xtl-reaction-tooltip-list { display: grid; gap: 5px; max-height: 208px; overflow-y: auto; }
+    .xtl-reaction-tooltip-actor { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 3px; }
+    .xtl-reaction-tooltip-actor .xtl-avatar { width: 26px; height: 26px; border-width: 1px; font-size: 9px; }
+    .xtl-reaction-tooltip-copy { min-width: 0; }
+    .xtl-reaction-tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fa; font-size: 12px; font-weight: 750; }
+    .xtl-reaction-tooltip-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 10px; margin-top: 1px; }
     .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
@@ -414,6 +455,219 @@ export function setup(ctx: SpindleFrontendContext) {
     })
     notice.append(copy, dismiss)
     return notice
+  }
+
+  const createActorReplyPicker = (state: TimelineSnapshot, options: ActorReplyPickerOptions): HTMLElement => {
+    const picker = createElement('div', 'xtl-invite-picker')
+    const trigger = button('', 'xtl-button xtl-invite-picker-trigger')
+    trigger.setAttribute('aria-haspopup', 'listbox')
+    trigger.setAttribute('aria-label', 'Invite an actor to reply')
+    trigger.setAttribute('aria-expanded', 'false')
+    trigger.disabled = options.disabled
+    picker.appendChild(trigger)
+
+    let value = options.value
+    const selectedActor = () => state.replyActors.find((actor) => actor.key === value) ?? null
+    const updateTrigger = () => {
+      const actor = selectedActor()
+      trigger.textContent = actor ? `Invite ${actor.name}` : 'Invite reply'
+      trigger.title = actor ? `Invite ${actor.name} to reply` : 'Invite an actor to reply'
+    }
+
+    const open = () => {
+      disposeActorPickerPortal?.()
+
+      const ownerDocument = tab.root.ownerDocument
+      const ownerWindow = ownerDocument.defaultView
+      const popover = createElement('div', 'xtl-actor-picker-popover')
+      popover.setAttribute('role', 'dialog')
+      popover.setAttribute('aria-label', 'Invite an actor to reply')
+      const search = document.createElement('input')
+      search.type = 'search'
+      search.className = 'xtl-actor-picker-search'
+      search.placeholder = 'Search actors…'
+      search.setAttribute('aria-label', 'Search actors to invite')
+      const results = createElement('div', 'xtl-actor-picker-results')
+      results.setAttribute('role', 'listbox')
+      popover.append(search, results)
+
+      const positionPopover = () => {
+        const rect = trigger.getBoundingClientRect()
+        const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth
+        const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight
+        const edge = 8
+        const width = Math.max(240, Math.min(320, viewportWidth - edge * 2))
+        const left = Math.max(edge, Math.min(rect.left, viewportWidth - width - edge))
+        const spaceBelow = viewportHeight - rect.bottom - edge
+        const spaceAbove = rect.top - edge
+        const placeAbove = spaceBelow < 260 && spaceAbove > spaceBelow
+        const maxHeight = Math.max(140, Math.min(420, placeAbove ? spaceAbove : spaceBelow))
+        popover.style.left = `${left}px`
+        popover.style.width = `${width}px`
+        popover.style.maxHeight = `${maxHeight}px`
+        popover.style.top = `${placeAbove ? Math.max(edge, rect.top - maxHeight - 6) : rect.bottom + 6}px`
+      }
+      const rootStyles = ownerWindow?.getComputedStyle(root)
+      for (const property of ['--xtl-blue', '--xtl-blue-soft', '--xtl-muted']) {
+        const styleValue = rootStyles?.getPropertyValue(property)
+        if (styleValue) popover.style.setProperty(property, styleValue)
+      }
+
+      const close = () => {
+        ownerWindow?.removeEventListener('resize', positionPopover)
+        ownerDocument.removeEventListener('scroll', positionPopover, true)
+        ownerDocument.removeEventListener('pointerdown', closeWhenClickingAway, true)
+        ownerDocument.removeEventListener('keydown', closeOnEscape)
+        popover.remove()
+        trigger.setAttribute('aria-expanded', 'false')
+        if (disposeActorPickerPortal === close) disposeActorPickerPortal = null
+      }
+      const closeWhenClickingAway = (event: PointerEvent) => {
+        const target = event.target
+        if (target instanceof Node && !popover.contains(target) && !trigger.contains(target)) close()
+      }
+      const closeOnEscape = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          close()
+          trigger.focus()
+        }
+      }
+      const chooseActor = (actorKey: string) => {
+        value = actorKey
+        updateTrigger()
+        close()
+        options.onChange(actorKey)
+      }
+      const renderResults = () => {
+        const matchingActors = state.replyActors
+          .filter((actor) => actorMatchesSearch(actor, search.value))
+          .map((actor) => ({ actor, rank: actorSearchRank(actor, search.value) }))
+          .sort((left, right) => right.rank - left.rank || left.actor.name.localeCompare(right.actor.name))
+        const visibleActors = matchingActors.slice(0, MAX_VISIBLE_ACTORS).map(({ actor }) => actor)
+        results.replaceChildren()
+
+        if (options.clearable && value) {
+          const clear = createElement('button', 'xtl-actor-picker-clear', 'No invited reply')
+          clear.type = 'button'
+          clear.addEventListener('click', () => chooseActor(''))
+          results.appendChild(clear)
+        }
+        if (!visibleActors.length) {
+          results.appendChild(createElement('p', 'xtl-actor-picker-empty', 'No actors match that search.'))
+          return
+        }
+        for (const actor of visibleActors) {
+          const option = createElement('button', `xtl-actor-picker-option${actor.key === value ? ' xtl-actor-picker-option--selected' : ''}`)
+          option.type = 'button'
+          option.setAttribute('role', 'option')
+          option.setAttribute('aria-selected', String(actor.key === value))
+          const copy = createElement('div', 'xtl-actor-picker-copy')
+          copy.append(
+            createElement('div', 'xtl-actor-picker-name', actor.name),
+            createElement('div', 'xtl-actor-picker-meta', `@${actor.handle} · ${actor.role ?? actor.bio}`),
+          )
+          option.append(actorAvatar(actor, 'small'), copy)
+          option.addEventListener('click', () => chooseActor(actor.key))
+          results.appendChild(option)
+        }
+        if (matchingActors.length > MAX_VISIBLE_ACTORS) {
+          results.appendChild(createElement(
+            'p',
+            'xtl-actor-picker-summary',
+            `Showing the first ${MAX_VISIBLE_ACTORS} of ${matchingActors.length}. Keep typing to narrow the list.`,
+          ))
+        }
+      }
+
+      ownerDocument.body.appendChild(popover)
+      trigger.setAttribute('aria-expanded', 'true')
+      ownerWindow?.addEventListener('resize', positionPopover)
+      ownerDocument.addEventListener('scroll', positionPopover, true)
+      ownerDocument.addEventListener('pointerdown', closeWhenClickingAway, true)
+      ownerDocument.addEventListener('keydown', closeOnEscape)
+      search.addEventListener('input', renderResults)
+      search.addEventListener('search', renderResults)
+      renderResults()
+      positionPopover()
+      disposeActorPickerPortal = close
+      queueMicrotask(() => search.focus())
+    }
+
+    trigger.addEventListener('click', open)
+    updateTrigger()
+    return picker
+  }
+
+  const reactionActorDetails = (state: TimelineSnapshot, actorKeys: string[]): ReactionActorDetail[] => {
+    const actorByKey = new Map<string, TimelineActor>()
+    for (const actor of [...state.state.posts.map((post) => post.author), ...state.personas, ...state.replyActors]) {
+      actorByKey.set(actor.key, actor)
+    }
+    return actorKeys.map((key) => {
+      if (key === 'timeline_user') {
+        return { key, name: 'You', handle: 'you', avatarUrl: null }
+      }
+      const actor = actorByKey.get(key)
+      return actor
+        ? { key, name: actor.name, handle: actor.handle, avatarUrl: actor.avatarUrl }
+        : { key, name: 'Unavailable actor', handle: key, avatarUrl: null }
+    })
+  }
+
+  const showReactionTooltip = (trigger: HTMLButtonElement, emoji: string, actorKeys: string[], state: TimelineSnapshot) => {
+    if (!actorKeys.length) return
+    disposeReactionTooltip?.()
+
+    const ownerDocument = tab.root.ownerDocument
+    const ownerWindow = ownerDocument.defaultView
+    const tooltip = createElement('div', 'xtl-reaction-tooltip')
+    tooltip.setAttribute('role', 'tooltip')
+    tooltip.appendChild(createElement('p', 'xtl-reaction-tooltip-title', `Reacted with ${emoji}`))
+    const list = createElement('div', 'xtl-reaction-tooltip-list')
+    for (const actor of reactionActorDetails(state, actorKeys)) {
+      const item = createElement('div', 'xtl-reaction-tooltip-actor')
+      const copy = createElement('div', 'xtl-reaction-tooltip-copy')
+      copy.append(
+        createElement('div', 'xtl-reaction-tooltip-name', actor.name),
+        createElement('div', 'xtl-reaction-tooltip-handle', `@${actor.handle}`),
+      )
+      item.append(actorAvatar(actor, 'small'), copy)
+      list.appendChild(item)
+    }
+    tooltip.appendChild(list)
+
+    const positionTooltip = () => {
+      const rect = trigger.getBoundingClientRect()
+      const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth
+      const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight
+      const edge = 8
+      const width = Math.min(260, viewportWidth - edge * 2)
+      const left = Math.max(edge, Math.min(rect.left + rect.width / 2 - width / 2, viewportWidth - width - edge))
+      const tooltipHeight = Math.min(260, tooltip.getBoundingClientRect().height || 100)
+      const top = rect.top - edge - tooltipHeight >= edge
+        ? rect.top - edge - tooltipHeight
+        : Math.min(viewportHeight - tooltipHeight - edge, rect.bottom + edge)
+      tooltip.style.left = `${left}px`
+      tooltip.style.top = `${Math.max(edge, top)}px`
+    }
+    const rootStyles = ownerWindow?.getComputedStyle(root)
+    for (const property of ['--xtl-blue', '--xtl-blue-soft', '--xtl-muted']) {
+      const styleValue = rootStyles?.getPropertyValue(property)
+      if (styleValue) tooltip.style.setProperty(property, styleValue)
+    }
+    const close = () => {
+      ownerWindow?.removeEventListener('resize', positionTooltip)
+      ownerDocument.removeEventListener('scroll', positionTooltip, true)
+      tooltip.remove()
+      if (disposeReactionTooltip === close) disposeReactionTooltip = null
+    }
+
+    ownerDocument.body.appendChild(tooltip)
+    ownerWindow?.addEventListener('resize', positionTooltip)
+    ownerDocument.addEventListener('scroll', positionTooltip, true)
+    positionTooltip()
+    disposeReactionTooltip = close
   }
 
   const renderComposer = (state: TimelineSnapshot) => {
@@ -530,27 +784,17 @@ export function setup(ctx: SpindleFrontendContext) {
     const controls = createElement('div', 'xtl-composer-controls')
     const actions = createElement('div', 'xtl-composer-actions')
 
-    let inviteSelect: HTMLSelectElement | null = null
     if (state.replyActors.length && !replyThreadOwner) {
-      inviteSelect = document.createElement('select')
-      inviteSelect.className = 'xtl-select'
-      inviteSelect.setAttribute('aria-label', 'Invite a reply')
-      const none = document.createElement('option')
-      none.value = ''
-      none.textContent = 'No invited reply'
-      inviteSelect.appendChild(none)
-      for (const actor of state.replyActors) {
-        const option = document.createElement('option')
-        option.value = actor.key
-        option.textContent = `Invite ${actor.name}`
-        inviteSelect.appendChild(option)
-      }
-      inviteSelect.value = inviteActorKey
-      inviteSelect.disabled = busy || !state.permissions.includes('generation')
-      inviteSelect.addEventListener('change', (event) => {
-        inviteActorKey = (event.currentTarget as HTMLSelectElement).value
+      const invitePicker = createActorReplyPicker(state, {
+        value: inviteActorKey,
+        disabled: busy || !state.permissions.includes('generation'),
+        clearable: true,
+        onChange: (actorKey) => {
+          inviteActorKey = actorKey
+          updateWeaveLabel()
+        },
       })
-      actions.appendChild(inviteSelect)
+      actions.appendChild(invitePicker)
     }
 
     const weave = button(
@@ -781,6 +1025,15 @@ export function setup(ctx: SpindleFrontendContext) {
       const reaction = post.reactions.find((entry) => entry.emoji === emoji)
       const active = Boolean(reaction?.actorKeys.includes('timeline_user'))
       const react = button(`${emoji}${reaction?.actorKeys.length ? ` ${reaction.actorKeys.length}` : ''}`, `xtl-button xtl-reaction${active ? ' xtl-reaction--active' : ''}`)
+      const reactingActorKeys = reaction?.actorKeys ?? []
+      if (reactingActorKeys.length) {
+        const reactingNames = reactionActorDetails(state, reactingActorKeys).map((actor) => actor.name).join(', ')
+        react.setAttribute('aria-label', `${emoji} reaction from ${reactingNames}`)
+        react.addEventListener('pointerenter', () => showReactionTooltip(react, emoji, reactingActorKeys, state))
+        react.addEventListener('pointerleave', () => disposeReactionTooltip?.())
+        react.addEventListener('focus', () => showReactionTooltip(react, emoji, reactingActorKeys, state))
+        react.addEventListener('blur', () => disposeReactionTooltip?.())
+      }
       react.disabled = busy
       react.addEventListener('click', () => send({ type: 'toggle_reaction', postId: post.id, emoji }))
       actions.appendChild(react)
@@ -797,14 +1050,16 @@ export function setup(ctx: SpindleFrontendContext) {
     actions.appendChild(reply)
 
     if (state.permissions.includes('generation') && state.replyActors.length) {
-      const invite = button('Invite reply', 'xtl-button xtl-button--quiet')
-      invite.disabled = busy
-      invite.addEventListener('click', () => {
-        replyToId = post.id
-        inviteActorKey = inviteActorKey || state.replyActors[0].key
-        chatSource = null
-        render()
-        focusComposer()
+      const invite = createActorReplyPicker(state, {
+        value: '',
+        disabled: busy,
+        onChange: (actorKey) => {
+          replyToId = post.id
+          inviteActorKey = actorKey
+          chatSource = null
+          render()
+          focusComposer()
+        },
       })
       actions.appendChild(invite)
     }
@@ -1201,6 +1456,10 @@ export function setup(ctx: SpindleFrontendContext) {
   const render = () => {
     disposeMentionPortal?.()
     disposeMentionPortal = null
+    disposeActorPickerPortal?.()
+    disposeActorPickerPortal = null
+    disposeReactionTooltip?.()
+    disposeReactionTooltip = null
     personaPicker?.destroy()
     personaPicker = null
     sliderHandles.forEach(h => h.destroy())
@@ -1276,6 +1535,10 @@ export function setup(ctx: SpindleFrontendContext) {
   return () => {
     disposeMentionPortal?.()
     disposeMentionPortal = null
+    disposeActorPickerPortal?.()
+    disposeActorPickerPortal = null
+    disposeReactionTooltip?.()
+    disposeReactionTooltip = null
     personaPicker?.destroy()
     personaPicker = null
     sliderHandles.forEach(h => h.destroy())

@@ -7,6 +7,7 @@ export const DEFAULT_CHAT_CONTEXT_MESSAGES = 10
 export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
 export type TimelineActorKind = 'persona' | 'character' | 'council'
+export type TimelineRosterAction = 'weave' | 'reply' | 'react'
 
 export interface TimelineActor {
   key: string
@@ -67,9 +68,10 @@ export interface TimelineSettings {
 }
 
 export interface TimelineState {
-  version: 3
+  version: 4
   posts: TimelinePost[]
   rosterActorKeys: string[]
+  rosterActionHistory: TimelineRosterAction[]
   nextRosterWeaveAt: number | null
   settings: TimelineSettings
 }
@@ -93,9 +95,10 @@ export interface TimelineSnapshot {
 
 export function createEmptyTimelineState(): TimelineState {
   return {
-    version: 3,
+    version: 4,
     posts: [],
     rosterActorKeys: [],
+    rosterActionHistory: [],
     nextRosterWeaveAt: null,
     settings: {
       selectedPersonaId: null,
