@@ -1932,11 +1932,11 @@ function setup(ctx) {
     addSliderRow("Frequency Penalty", "How much to penalize new tokens based on their existing frequency in the text so far.", 0, 2, 0.05, state.state.settings.frequencyPenalty ?? 0, "frequencyPenalty");
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
-    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes public weaves, reactions, and timeline reply threads. Direct messages, followed actors, their schedule, and saved settings stay in place."));
+    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes public weaves, reactions, reply threads, and direct messages. Followed actors, their schedule, and saved settings stay in place."));
     const reset = button("Reset timeline", "xtl-button xtl-button--danger");
     reset.disabled = busy;
     reset.addEventListener("click", () => {
-      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All public weaves, reactions, and timeline reply threads will be deleted. Direct messages, followed actors, and settings will stay in place.");
+      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All public weaves, reactions, reply threads, and direct messages will be deleted. Followed actors and settings will stay in place.");
       if (!confirmed)
         return;
       draft = "";
@@ -1946,6 +1946,16 @@ function setup(ctx) {
       chatSource = null;
       includeCurrentChat = false;
       pendingDraft = null;
+      activeDirectThreadId = null;
+      dmNewThreadOpen = false;
+      selectedDirectActorKey = "";
+      pendingDirectActorKey = null;
+      pendingDirectMessage = null;
+      dmDraft = "";
+      dmGifSearch = "";
+      dmGifQuery = "";
+      dmGifPickerOpen = false;
+      dmError = "";
       send({ type: "reset_timeline" });
     });
     resetRow.append(resetLabels, reset);

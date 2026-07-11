@@ -15,7 +15,7 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 - Lumia DLC items, Council members, and character cards as timeline actors, including actor-originated weaves and replies. A Lumia that is already in the active Council stays represented by its Council actor, preserving its configured role.
 - Chat weaves use the typed timeline message verbatim. When enabled, their configurable plain-text chat-context snapshot is retained privately for thread replies.
 - Per-user private timeline and direct-message storage via `spindle.userStorage`.
-- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears public posts, reactions, and reply threads while preserving direct messages, followed actors, and settings.
+- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears public posts, reactions, reply threads, and direct messages while preserving followed actors and settings.
 
 ## Permissions
 

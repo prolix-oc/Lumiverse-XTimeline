@@ -1664,6 +1664,7 @@ async function updateSettings(payload: UnknownRecord, userId: string): Promise<v
 async function resetTimeline(userId: string): Promise<void> {
   const [currentState, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
   currentState.posts = []
+  currentState.directThreads = []
   await saveState(currentState, userId)
   scheduleRosterTimer(userId, currentState)
   sendActivity(userId, false)

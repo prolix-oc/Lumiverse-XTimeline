@@ -1391,6 +1391,7 @@ async function updateSettings(payload, userId) {
 async function resetTimeline(userId) {
   const [currentState, directory] = await Promise.all([loadState(userId), loadDirectory(userId)]);
   currentState.posts = [];
+  currentState.directThreads = [];
   await saveState(currentState, userId);
   scheduleRosterTimer(userId, currentState);
   sendActivity(userId, false);
