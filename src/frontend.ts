@@ -954,9 +954,15 @@ export function setup(ctx: SpindleFrontendContext) {
     return card
   }
 
+  let settingsExpanded = false
+
   const renderSettings = (state: TimelineSnapshot) => {
     const card = createElement('section', 'xtl-card xtl-settings')
     const details = document.createElement('details')
+    details.open = settingsExpanded
+    details.addEventListener('toggle', () => {
+      settingsExpanded = details.open
+    })
     const summary = createElement('summary', undefined, 'Timeline settings')
     details.appendChild(summary)
 

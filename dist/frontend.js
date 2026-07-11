@@ -840,9 +840,14 @@ function setup(ctx) {
       card.appendChild(createElement("p", "xtl-roster-access", accessHint));
     return card;
   };
+  let settingsExpanded = false;
   const renderSettings = (state) => {
     const card = createElement("section", "xtl-card xtl-settings");
     const details = document.createElement("details");
+    details.open = settingsExpanded;
+    details.addEventListener("toggle", () => {
+      settingsExpanded = details.open;
+    });
     const summary = createElement("summary", undefined, "Timeline settings");
     details.appendChild(summary);
     const copy = createElement("p", "xtl-settings-copy", "Choose a fast connection for background character and Council weaves. Your saved Timeline choice is used only by this extension.");
