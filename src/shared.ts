@@ -1,6 +1,9 @@
 export const TIMELINE_STORAGE_PATH = 'timeline/state.json'
 export const MAX_WEAVE_LENGTH = 500
+export const MAX_DIRECT_MESSAGE_LENGTH = 1_000
 export const MAX_POSTS = 320
+export const MAX_DIRECT_THREADS = 80
+export const MAX_DIRECT_MESSAGES_PER_THREAD = 120
 export const MAX_ROSTER_ACTORS = 30
 export const MAX_CHAT_CONTEXT_MESSAGES = 30
 export const DEFAULT_CHAT_CONTEXT_MESSAGES = 10
@@ -56,6 +59,22 @@ export interface TimelinePost {
   gifUrl?: string
 }
 
+export interface TimelineDirectMessage {
+  id: string
+  author: TimelineActor
+  direction: 'incoming' | 'outgoing'
+  content: string
+  createdAt: number
+  gifUrl?: string
+}
+
+export interface TimelineDirectThread {
+  id: string
+  actor: TimelineActor
+  messages: TimelineDirectMessage[]
+  lastReadAt: number
+}
+
 export interface TimelineSettings {
   selectedPersonaId: string | null
   sidecarConnectionId: string | null
@@ -75,8 +94,9 @@ export interface TimelineSettings {
 }
 
 export interface TimelineState {
-  version: 6
+  version: 7
   posts: TimelinePost[]
+  directThreads: TimelineDirectThread[]
   rosterActorKeys: string[]
   rosterActorQueue: string[]
   rosterLastActorKey: string | null
@@ -104,8 +124,9 @@ export interface TimelineSnapshot {
 
 export function createEmptyTimelineState(): TimelineState {
   return {
-    version: 6,
+    version: 7,
     posts: [],
+    directThreads: [],
     rosterActorKeys: [],
     rosterActorQueue: [],
     rosterLastActorKey: null,

@@ -1,5 +1,6 @@
 // src/shared.ts
 var MAX_WEAVE_LENGTH = 500;
+var MAX_DIRECT_MESSAGE_LENGTH = 1000;
 var MIN_GENERATION_MAX_TOKENS = 32;
 var MAX_GENERATION_MAX_TOKENS = 2048;
 var DEFAULT_GENERATION_MAX_TOKENS = 2048;
@@ -69,7 +70,7 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isSnapshot(value) {
-  return isRecord(value) && isRecord(value.state) && Array.isArray(value.state.posts) && Array.isArray(value.personas) && Array.isArray(value.replyActors) && Array.isArray(value.connections);
+  return isRecord(value) && isRecord(value.state) && Array.isArray(value.state.posts) && Array.isArray(value.personas) && Array.isArray(value.replyActors) && Array.isArray(value.connections) && Array.isArray(value.state.directThreads);
 }
 function asMessage(value) {
   if (!isRecord(value) || typeof value.type !== "string")
@@ -103,6 +104,9 @@ function relativeTime(timestamp) {
   if (delta < 604800000)
     return `${Math.floor(delta / 86400000)}d`;
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(timestamp));
+}
+function gifDisplayUrl(gifUrl, highQuality) {
+  return highQuality ? gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAC/") : gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAM/");
 }
 function actorMatchesSearch(actor, query) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -297,6 +301,17 @@ function setup(ctx) {
   let knownActorWeaveIds = null;
   let newActorWeaveCount = 0;
   let timelineIsPastTop = false;
+  let activeDirectThreadId = null;
+  let selectedDirectActorKey = "";
+  let pendingDirectActorKey = null;
+  let dmDraft = "";
+  let dmGifSearch = "";
+  let dmGifQuery = "";
+  let dmGifPickerOpen = false;
+  let dmBusy = false;
+  let dmBusyActorName = null;
+  let dmError = "";
+  let pendingDirectMessage = null;
   const tab = ctx.ui.registerDrawerTab({
     id: "timeline",
     title: "Lumiverse Timeline",
@@ -308,6 +323,17 @@ function setup(ctx) {
   });
   const root = createElement("div", "xtl-app");
   tab.root.replaceChildren(root);
+  const dmsTab = ctx.ui.registerDrawerTab({
+    id: "direct-messages",
+    title: "Lumiverse Messages",
+    shortName: "DMs",
+    headerTitle: "Messages",
+    description: "Private direct-message threads with Lumiverse actors",
+    keywords: ["dm", "dms", "message", "messages", "inbox", "direct message", "actor"],
+    iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M7 9h10M7 13h6"/></svg>'
+  });
+  const dmsRoot = createElement("div", "xtl-app xtl-dms-app");
+  dmsTab.root.replaceChildren(dmsRoot);
   const removeStyle = ctx.dom.addStyle(`
     .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
     .xtl-header { position: sticky; top: 4px; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 4px -6px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border: 1px solid color-mix(in srgb, var(--xtl-line) 88%, transparent); border-radius: 12px; backdrop-filter: blur(16px); }
@@ -390,6 +416,55 @@ function setup(ctx) {
     .xtl-post-body { margin: 8px 0 11px 50px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #f0f4f7; }
     .xtl-post-source { margin: -3px 0 9px 50px; color: var(--xtl-blue); font-size: 11px; font-weight: 650; }
     .xtl-post-gif { display: block; width: calc(100% - 50px); max-width: none; height: auto; margin: 10px 0 20px 50px; border-radius: 12px; }
+    .xtl-dms-app { max-width: 980px; }
+    .xtl-dm-shell { display: grid; grid-template-columns: minmax(225px, 34%) minmax(0, 1fr); min-height: min(650px, calc(100vh - 110px)); overflow: hidden; }
+    .xtl-dm-inbox { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--xtl-line); background: #0b0e12; }
+    .xtl-dm-inbox-header, .xtl-dm-thread-header { display: flex; align-items: center; gap: 9px; min-height: 58px; box-sizing: border-box; padding: 11px 13px; border-bottom: 1px solid var(--xtl-line); }
+    .xtl-dm-inbox-title { flex: 1; margin: 0; font-size: 17px; letter-spacing: -.02em; }
+    .xtl-dm-new { display: grid; place-items: center; width: 33px; height: 33px; padding: 0; border-radius: 50%; font-size: 18px; }
+    .xtl-dm-list { overflow-y: auto; min-height: 0; flex: 1; }
+    .xtl-dm-list-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; width: 100%; gap: 9px; box-sizing: border-box; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--xtl-line) 70%, transparent); background: transparent; color: inherit; padding: 11px 12px; cursor: pointer; font: inherit; text-align: left; }
+    .xtl-dm-list-item:hover, .xtl-dm-list-item--active { background: color-mix(in srgb, var(--xtl-blue) 12%, transparent); }
+    .xtl-dm-list-item--unread .xtl-dm-list-name, .xtl-dm-list-item--unread .xtl-dm-list-preview { color: #f4f7fa; font-weight: 800; }
+    .xtl-dm-list-copy { min-width: 0; }
+    .xtl-dm-list-name-row { display: flex; align-items: baseline; min-width: 0; gap: 5px; }
+    .xtl-dm-list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
+    .xtl-dm-list-handle, .xtl-dm-list-time { color: var(--xtl-muted); font-size: 11px; white-space: nowrap; }
+    .xtl-dm-list-preview { overflow: hidden; color: var(--xtl-muted); text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; font-size: 12px; }
+    .xtl-dm-unread { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--xtl-blue); color: #fff; font-size: 10px; font-weight: 850; }
+    .xtl-dm-empty-inbox { margin: 0; padding: 27px 18px; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; text-align: center; }
+    .xtl-dm-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--xtl-surface); }
+    .xtl-dm-thread-header { flex: 0 0 auto; }
+    .xtl-dm-thread-title { min-width: 0; flex: 1; }
+    .xtl-dm-thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
+    .xtl-dm-thread-meta { overflow: hidden; color: var(--xtl-muted); text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; font-size: 11px; }
+    .xtl-dm-thread-scroll { display: flex; flex: 1; flex-direction: column; gap: 9px; overflow-y: auto; min-height: 0; padding: 18px 14px; }
+    .xtl-dm-message-row { display: flex; align-items: flex-end; gap: 7px; max-width: 88%; }
+    .xtl-dm-message-row--outgoing { align-self: flex-end; flex-direction: row-reverse; }
+    .xtl-dm-message-row .xtl-avatar { width: 29px; height: 29px; border-width: 1px; font-size: 9px; }
+    .xtl-dm-bubble { min-width: 0; border-radius: 18px 18px 18px 5px; background: #27313b; color: #f5f8fa; overflow: hidden; }
+    .xtl-dm-message-row--outgoing .xtl-dm-bubble { border-radius: 18px 18px 5px 18px; background: var(--xtl-blue); }
+    .xtl-dm-bubble-copy { padding: 9px 11px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.38; }
+    .xtl-dm-gif { display: block; width: min(100%, 350px); max-height: 310px; object-fit: cover; background: #0a0d11; }
+    .xtl-dm-time { color: var(--xtl-muted); margin: 2px 4px 0; font-size: 10px; }
+    .xtl-dm-message-row--outgoing .xtl-dm-time { text-align: right; }
+    .xtl-dm-composer { flex: 0 0 auto; padding: 10px 12px 12px; border-top: 1px solid var(--xtl-line); background: #0b0e12; }
+    .xtl-dm-compose-row { display: flex; align-items: flex-end; gap: 7px; }
+    .xtl-dm-compose-row .xtl-textarea { min-height: 43px; max-height: 150px; padding: 10px 12px; resize: none; }
+    .xtl-dm-gif-toggle { display: grid; place-items: center; min-width: 39px; height: 39px; padding: 0; border-radius: 10px; color: #9ddcff; font-size: 11px; }
+    .xtl-dm-send { min-width: 58px; height: 39px; padding: 0 12px; }
+    .xtl-dm-gif-search { display: flex; align-items: center; gap: 7px; margin: 8px 0 0 46px; }
+    .xtl-dm-gif-search input { min-width: 0; flex: 1; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 8px 10px; font: inherit; font-size: 12px; outline: none; }
+    .xtl-dm-gif-search input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); }
+    .xtl-dm-gif-chip { display: flex; align-items: center; gap: 5px; width: fit-content; max-width: calc(100% - 46px); margin: 8px 0 0 46px; color: #b9e0ff; font-size: 11px; }
+    .xtl-dm-gif-chip button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xtl-dm-welcome { display: grid; place-items: center; flex: 1; min-height: 0; padding: 28px; text-align: center; }
+    .xtl-dm-welcome-copy { max-width: 360px; color: var(--xtl-muted); font-size: 13px; line-height: 1.55; }
+    .xtl-dm-welcome-copy h3 { margin: 10px 0 6px; color: #f4f7fa; font-size: 18px; }
+    .xtl-dm-new-thread { display: grid; width: min(380px, 100%); gap: 12px; text-align: left; }
+    .xtl-dm-new-thread .xtl-actor-picker-trigger { width: 100%; max-width: none; justify-content: space-between; }
+    .xtl-dm-new-thread-label { color: #d9e3ec; font-size: 13px; font-weight: 750; }
+    .xtl-dm-thread-notice { margin: 10px 12px 0; }
     .xtl-post-actions { margin: 8px 0 0 49px; gap: 8px; flex-wrap: wrap; }
     .xtl-post-actions .xtl-button { color: var(--xtl-muted); border-color: transparent; padding: 6px 8px; }
     .xtl-post-actions .xtl-button:hover:not(:disabled) { color: var(--xtl-blue); background: var(--xtl-blue-soft); }
@@ -446,7 +521,8 @@ function setup(ctx) {
     .xtl-number-input { width: 64px; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 7px 6px; font: inherit; font-size: 12px; font-weight: 650; }
     .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } }
+    @media (max-width: 680px) { .xtl-dms-app { padding-inline: 9px; } .xtl-dm-shell { display: block; min-height: 0; } .xtl-dm-inbox { min-height: 440px; border-right: 0; } .xtl-dm-main { min-height: calc(100vh - 120px); } .xtl-dm-shell--thread-open .xtl-dm-inbox { display: none; } .xtl-dm-shell:not(.xtl-dm-shell--thread-open) .xtl-dm-main { display: none; } .xtl-dm-thread-header::before { content: '‹'; color: #b9e0ff; font-size: 30px; line-height: .6; } .xtl-dm-message-row { max-width: 93%; } }
+    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } .xtl-dm-gif-search, .xtl-dm-gif-chip { margin-left: 0; max-width: 100%; } }
   `);
   const selectedPersona = () => {
     if (!snapshot)
@@ -1092,7 +1168,7 @@ function setup(ctx) {
     if (post.gifUrl) {
       const img = document2.createElement("img");
       const hq = Boolean(state.state.settings.highQualityGifs);
-      img.src = hq ? post.gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAC/") : post.gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAM/");
+      img.src = gifDisplayUrl(post.gifUrl, hq);
       img.className = "xtl-post-gif";
       img.alt = "";
       article.appendChild(img);
@@ -1147,6 +1223,299 @@ function setup(ctx) {
     }
     article.appendChild(actions);
     return article;
+  };
+  const unreadDirectMessages = (thread) => thread.messages.filter((message) => message.direction === "incoming" && message.createdAt > thread.lastReadAt).length;
+  const directThreads = (state) => [...state.state.directThreads].sort((left, right) => {
+    const leftTime = left.messages[left.messages.length - 1]?.createdAt ?? 0;
+    const rightTime = right.messages[right.messages.length - 1]?.createdAt ?? 0;
+    return rightTime - leftTime;
+  });
+  const activeDirectThread = () => snapshot && activeDirectThreadId ? snapshot.state.directThreads.find((thread) => thread.id === activeDirectThreadId) ?? null : null;
+  const updateDmBadge = (state) => {
+    const unread = state.state.directThreads.reduce((total, thread) => total + unreadDirectMessages(thread), 0);
+    dmsTab.setBadge(unread ? String(unread) : null);
+  };
+  const renderDmError = () => {
+    if (!dmError)
+      return null;
+    const notice = createElement("div", "xtl-notice xtl-notice--error xtl-dm-thread-notice");
+    notice.append(document2.createTextNode(dmError));
+    const dismiss = button("Dismiss", "xtl-button xtl-button--quiet");
+    dismiss.addEventListener("click", () => {
+      dmError = "";
+      renderDms();
+    });
+    notice.appendChild(dismiss);
+    return notice;
+  };
+  function selectDirectThread(threadId) {
+    activeDirectThreadId = threadId;
+    selectedDirectActorKey = "";
+    dmGifPickerOpen = false;
+    dmGifSearch = "";
+    dmGifQuery = "";
+    dmError = "";
+    renderDms();
+    send({ type: "read_direct_thread", threadId });
+  }
+  function openDirectConversation(actorKey) {
+    const existing = snapshot?.state.directThreads.find((thread) => thread.actor.key === actorKey);
+    dmsTab.activate();
+    if (existing) {
+      selectDirectThread(existing.id);
+      return;
+    }
+    selectedDirectActorKey = actorKey;
+    pendingDirectActorKey = actorKey;
+    dmBusy = true;
+    dmBusyActorName = snapshot?.replyActors.find((actor) => actor.key === actorKey)?.name ?? null;
+    renderDms();
+    send({
+      type: "start_direct_thread",
+      actorKey,
+      personaId: selectedPersona()?.sourceId ?? null
+    });
+  }
+  const renderDirectInbox = (state) => {
+    const inbox = createElement("aside", "xtl-dm-inbox");
+    const heading = createElement("div", "xtl-dm-inbox-header");
+    heading.appendChild(createElement("h2", "xtl-dm-inbox-title", "Messages"));
+    const start = button("✎", "xtl-button xtl-dm-new");
+    start.title = "New message";
+    start.setAttribute("aria-label", "New message");
+    start.disabled = dmBusy || !state.permissions.includes("generation") || state.replyActors.length === 0;
+    start.addEventListener("click", () => {
+      activeDirectThreadId = null;
+      selectedDirectActorKey = "";
+      dmError = "";
+      renderDms();
+    });
+    heading.appendChild(start);
+    inbox.appendChild(heading);
+    const list = createElement("div", "xtl-dm-list");
+    const threads = directThreads(state);
+    if (!threads.length) {
+      list.appendChild(createElement("p", "xtl-dm-empty-inbox", "No direct messages yet. Start one and the actor will send the opening note here."));
+    }
+    for (const thread of threads) {
+      const lastMessage = thread.messages[thread.messages.length - 1];
+      const unread = unreadDirectMessages(thread);
+      const item = document2.createElement("button");
+      item.type = "button";
+      item.className = `xtl-dm-list-item${thread.id === activeDirectThreadId ? " xtl-dm-list-item--active" : ""}${unread ? " xtl-dm-list-item--unread" : ""}`;
+      item.setAttribute("aria-label", `${thread.actor.name} direct-message thread${unread ? `, ${unread} unread` : ""}`);
+      const copy = createElement("div", "xtl-dm-list-copy");
+      const nameRow = createElement("div", "xtl-dm-list-name-row");
+      nameRow.append(createElement("span", "xtl-dm-list-name", thread.actor.name), createElement("span", "xtl-dm-list-handle", `@${thread.actor.handle}`));
+      if (lastMessage)
+        nameRow.appendChild(createElement("span", "xtl-dm-list-time", relativeTime(lastMessage.createdAt)));
+      const preview = lastMessage?.content || (lastMessage?.gifUrl ? "GIF" : "Start a conversation");
+      copy.append(nameRow, createElement("div", "xtl-dm-list-preview", `${lastMessage?.direction === "outgoing" ? "You: " : ""}${preview}`));
+      item.append(actorAvatar(thread.actor, "small"), copy);
+      if (unread)
+        item.appendChild(createElement("span", "xtl-dm-unread", unread > 99 ? "99+" : String(unread)));
+      item.addEventListener("click", () => selectDirectThread(thread.id));
+      list.appendChild(item);
+    }
+    inbox.appendChild(list);
+    return inbox;
+  };
+  const renderDirectMessage = (message, state) => {
+    const outgoing = message.direction === "outgoing";
+    const row = createElement("div", `xtl-dm-message-row${outgoing ? " xtl-dm-message-row--outgoing" : ""}`);
+    const bubble = createElement("div", "xtl-dm-bubble");
+    if (message.content)
+      bubble.appendChild(createElement("div", "xtl-dm-bubble-copy", message.content));
+    if (message.gifUrl) {
+      const image = document2.createElement("img");
+      image.className = "xtl-dm-gif";
+      image.src = gifDisplayUrl(message.gifUrl, Boolean(state.state.settings.highQualityGifs));
+      image.alt = message.content ? "" : "GIF attachment";
+      bubble.appendChild(image);
+    }
+    const time = createElement("div", "xtl-dm-time", relativeTime(message.createdAt));
+    const stack = createElement("div");
+    stack.append(bubble, time);
+    if (!outgoing)
+      row.append(actorAvatar(message.author, "small"), stack);
+    else
+      row.append(stack);
+    return row;
+  };
+  const renderDirectComposer = (thread, state) => {
+    const composer = createElement("div", "xtl-dm-composer");
+    const row = createElement("div", "xtl-dm-compose-row");
+    const gifToggle = button("GIF", `xtl-button xtl-dm-gif-toggle${dmGifPickerOpen || dmGifQuery ? " xtl-button--selected" : ""}`);
+    gifToggle.title = "Attach a GIF";
+    gifToggle.disabled = dmBusy;
+    gifToggle.addEventListener("click", () => {
+      dmGifPickerOpen = !dmGifPickerOpen;
+      renderDms();
+    });
+    const textarea = document2.createElement("textarea");
+    textarea.className = "xtl-textarea";
+    textarea.rows = 1;
+    textarea.maxLength = MAX_DIRECT_MESSAGE_LENGTH;
+    textarea.placeholder = `Message ${thread.actor.name}`;
+    textarea.value = dmDraft;
+    textarea.disabled = dmBusy;
+    textarea.addEventListener("input", () => {
+      dmDraft = textarea.value.slice(0, MAX_DIRECT_MESSAGE_LENGTH);
+      sendButton.disabled = dmBusy || !dmDraft.trim() && !dmGifQuery;
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing && !sendButton.disabled) {
+        event.preventDefault();
+        sendButton.click();
+      }
+    });
+    const sendButton = button("Send", "xtl-button xtl-button--primary xtl-dm-send");
+    sendButton.disabled = dmBusy || !dmDraft.trim() && !dmGifQuery;
+    sendButton.addEventListener("click", () => {
+      const content = dmDraft;
+      const gifQuery = dmGifQuery;
+      pendingDirectMessage = { threadId: thread.id, content, gifQuery };
+      dmDraft = "";
+      dmGifQuery = "";
+      dmGifSearch = "";
+      dmGifPickerOpen = false;
+      dmBusy = true;
+      dmBusyActorName = thread.actor.name;
+      renderDms();
+      send({
+        type: "send_direct_message",
+        threadId: thread.id,
+        content,
+        gifQuery,
+        personaId: selectedPersona()?.sourceId ?? null
+      });
+    });
+    row.append(gifToggle, textarea, sendButton);
+    composer.appendChild(row);
+    if (dmGifQuery) {
+      const attached = createElement("div", "xtl-dm-gif-chip");
+      const remove = button(`GIF: ${dmGifQuery} ×`, "xtl-button xtl-button--quiet");
+      remove.title = "Remove GIF attachment";
+      remove.addEventListener("click", () => {
+        dmGifQuery = "";
+        renderDms();
+      });
+      attached.appendChild(remove);
+      composer.appendChild(attached);
+    } else if (dmGifPickerOpen) {
+      const picker = createElement("div", "xtl-dm-gif-search");
+      const input = document2.createElement("input");
+      input.placeholder = "Search GIFs on Tenor";
+      input.value = dmGifSearch;
+      input.maxLength = 120;
+      input.disabled = dmBusy;
+      const attach = button("Attach");
+      attach.disabled = dmBusy || !dmGifSearch.trim();
+      const commit = () => {
+        const query = input.value.replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!query)
+          return;
+        dmGifQuery = query;
+        dmGifSearch = "";
+        dmGifPickerOpen = false;
+        renderDms();
+      };
+      input.addEventListener("input", () => {
+        dmGifSearch = input.value.slice(0, 120);
+        attach.disabled = dmBusy || !dmGifSearch.trim();
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+        }
+      });
+      attach.addEventListener("click", commit);
+      picker.append(input, attach);
+      composer.appendChild(picker);
+    }
+    return composer;
+  };
+  const renderDirectThread = (thread, state) => {
+    const main = createElement("section", "xtl-dm-main");
+    const header = createElement("div", "xtl-dm-thread-header");
+    const back = button("‹", "xtl-button xtl-button--quiet");
+    back.title = "Back to messages";
+    back.setAttribute("aria-label", "Back to messages");
+    back.addEventListener("click", () => {
+      activeDirectThreadId = null;
+      renderDms();
+    });
+    const title = createElement("div", "xtl-dm-thread-title");
+    title.append(createElement("div", "xtl-dm-thread-name", thread.actor.name), createElement("div", "xtl-dm-thread-meta", `@${thread.actor.handle} · private conversation`));
+    header.append(back, actorAvatar(thread.actor, "small"), title);
+    main.appendChild(header);
+    const errorNotice = renderDmError();
+    if (errorNotice)
+      main.appendChild(errorNotice);
+    if (dmBusy)
+      main.appendChild(createElement("div", "xtl-notice xtl-dm-thread-notice", `${dmBusyActorName ?? thread.actor.name} is replying…`));
+    const scroll = createElement("div", "xtl-dm-thread-scroll");
+    if (!thread.messages.length)
+      scroll.appendChild(createElement("p", "xtl-dm-empty-inbox", "This conversation has no messages yet."));
+    for (const message of thread.messages)
+      scroll.appendChild(renderDirectMessage(message, state));
+    main.appendChild(scroll);
+    main.appendChild(renderDirectComposer(thread, state));
+    requestAnimationFrame(() => {
+      scroll.scrollTop = scroll.scrollHeight;
+    });
+    return main;
+  };
+  const renderDirectWelcome = (state) => {
+    const main = createElement("section", "xtl-dm-main");
+    const welcome = createElement("div", "xtl-dm-welcome");
+    const newThread = createElement("div", "xtl-dm-new-thread");
+    const copy = createElement("div", "xtl-dm-welcome-copy");
+    copy.append(createElement("div", "xtl-header-mark", "✉"), createElement("h3", undefined, selectedDirectActorKey ? "Start a private conversation" : "Your messages"), createElement("p", undefined, selectedDirectActorKey ? "The actor will send the first DM, then this private thread stays out of the timeline." : "Choose a conversation from your inbox, or start a new private thread with an actor."));
+    newThread.append(copy);
+    if (dmError) {
+      const errorNotice = renderDmError();
+      if (errorNotice)
+        newThread.appendChild(errorNotice);
+    }
+    if (state.replyActors.length) {
+      newThread.appendChild(createElement("label", "xtl-dm-new-thread-label", "Message an actor"));
+      newThread.appendChild(createActorReplyPicker(state, {
+        value: selectedDirectActorKey,
+        disabled: dmBusy || !state.permissions.includes("generation"),
+        clearable: true,
+        onChange: (actorKey) => {
+          selectedDirectActorKey = actorKey;
+          dmError = "";
+          renderDms();
+        }
+      }));
+      const start = button("Start DM", "xtl-button xtl-button--primary");
+      start.disabled = dmBusy || !selectedDirectActorKey || !state.permissions.includes("generation");
+      start.addEventListener("click", () => openDirectConversation(selectedDirectActorKey));
+      newThread.appendChild(start);
+    } else {
+      newThread.appendChild(createElement("p", "xtl-dm-empty-inbox", "No messageable actors are available yet."));
+    }
+    if (dmBusy)
+      newThread.appendChild(createElement("div", "xtl-notice", `${dmBusyActorName ?? "Actor"} is writing a direct message…`));
+    welcome.appendChild(newThread);
+    main.appendChild(welcome);
+    return main;
+  };
+  const renderDms = () => {
+    disposeActorPickerPortal?.();
+    disposeActorPickerPortal = null;
+    dmsRoot.replaceChildren();
+    if (!snapshot) {
+      dmsRoot.appendChild(createElement("div", "xtl-loading", "Loading your messages…"));
+      return;
+    }
+    const activeThread = activeDirectThread();
+    const shell = createElement("div", `xtl-card xtl-dm-shell${activeThread ? " xtl-dm-shell--thread-open" : ""}`);
+    shell.append(renderDirectInbox(snapshot), activeThread ? renderDirectThread(activeThread, snapshot) : renderDirectWelcome(snapshot));
+    dmsRoot.appendChild(shell);
   };
   const renderTimeline = (state) => {
     const feed = createElement("section", "xtl-card");
@@ -1217,10 +1586,14 @@ function setup(ctx) {
           render();
           send({ type: "create_actor_weave", actorKey: actor.key });
         });
+        const dmNow = button("DM now", "xtl-button");
+        dmNow.title = `Have ${actor.name} send you a private direct message`;
+        dmNow.disabled = dmBusy || !state.permissions.includes("generation");
+        dmNow.addEventListener("click", () => openDirectConversation(actor.key));
         const unfollow = button("Unfollow", "xtl-button xtl-button--quiet");
         unfollow.disabled = busy;
         unfollow.addEventListener("click", () => send({ type: "toggle_roster_actor", actorKey: actor.key }));
-        actions.append(weaveNow, unfollow);
+        actions.append(weaveNow, dmNow, unfollow);
         item.append(actorAvatar(actor, "small"), details, actions);
         rosterList.appendChild(item);
       }
@@ -1506,15 +1879,42 @@ function setup(ctx) {
       updateTimelineScrollState();
       trackNewActorWeaves(message.snapshot);
       snapshot = message.snapshot;
+      updateDmBadge(snapshot);
       if (pendingDraft)
         pendingDraft = null;
+      if (pendingDirectActorKey) {
+        const createdThread = snapshot.state.directThreads.find((thread) => thread.actor.key === pendingDirectActorKey);
+        if (createdThread) {
+          activeDirectThreadId = createdThread.id;
+          selectedDirectActorKey = "";
+          pendingDirectActorKey = null;
+        }
+      }
+      if (activeDirectThreadId && !snapshot.state.directThreads.some((thread) => thread.id === activeDirectThreadId)) {
+        activeDirectThreadId = null;
+      }
       if (inviteActorKey && !snapshot.replyActors.some((actor) => actor.key === inviteActorKey))
         inviteActorKey = "";
       render();
+      renderDms();
       renderFollowModal();
       return;
     }
     if (message.type === "timeline_error") {
+      if (message.scope === "dm") {
+        dmError = message.message ?? "Direct-message request failed.";
+        if (pendingDirectMessage) {
+          dmDraft = pendingDirectMessage.content;
+          dmGifQuery = pendingDirectMessage.gifQuery;
+          activeDirectThreadId = pendingDirectMessage.threadId;
+          pendingDirectMessage = null;
+        }
+        pendingDirectActorKey = null;
+        dmBusy = false;
+        dmBusyActorName = null;
+        renderDms();
+        return;
+      }
       error = message.message ?? "Timeline request failed.";
       if (pendingDraft) {
         if (!draft)
@@ -1533,6 +1933,12 @@ function setup(ctx) {
       return;
     }
     if (message.type === "timeline_activity") {
+      if (message.scope === "dm") {
+        dmBusy = Boolean(message.active);
+        dmBusyActorName = message.actorName ?? null;
+        renderDms();
+        return;
+      }
       busy = Boolean(message.active);
       busyActorName = message.actorName ?? null;
       render();
@@ -1552,6 +1958,12 @@ function setup(ctx) {
     focusComposer();
   });
   const unsubscribeActivate = tab.onActivate(() => send({ type: "load_timeline" }));
+  const unsubscribeDmsActivate = dmsTab.onActivate(() => {
+    send({ type: "load_timeline" });
+    if (activeDirectThreadId)
+      send({ type: "read_direct_thread", threadId: activeDirectThreadId });
+    renderDms();
+  });
   const document2 = tab.root.ownerDocument;
   const onScroll = (event) => {
     const target = event.target;
@@ -1560,6 +1972,7 @@ function setup(ctx) {
   };
   document2.addEventListener("scroll", onScroll, { capture: true, passive: true });
   render();
+  renderDms();
   send({ type: "load_timeline" });
   readyGate.release();
   return () => {
@@ -1580,10 +1993,13 @@ function setup(ctx) {
     unsubscribeMessages();
     unsubscribeInputAction();
     unsubscribeActivate();
+    unsubscribeDmsActivate();
     inputAction.destroy();
     tab.destroy();
+    dmsTab.destroy();
     removeStyle();
     root.replaceChildren();
+    dmsRoot.replaceChildren();
     ctx.dom.cleanup();
   };
 }
