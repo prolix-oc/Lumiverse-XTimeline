@@ -520,6 +520,7 @@ function normalizeState(value: unknown): TimelineState {
       minActorWeaveIntervalMinutes,
       maxActorWeaveIntervalMinutes,
       gifChance: typeof settings.gifChance === 'number' ? settings.gifChance : fallback.settings.gifChance,
+      encourageNsfw: typeof settings.encourageNsfw === 'boolean' ? settings.encourageNsfw : fallback.settings.encourageNsfw,
       highQualityGifs: typeof settings.highQualityGifs === 'boolean' ? settings.highQualityGifs : fallback.settings.highQualityGifs,
       includeChatContext: typeof settings.includeChatContext === 'boolean'
         ? settings.includeChatContext

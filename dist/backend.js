@@ -442,6 +442,7 @@ function normalizeState(value) {
       minActorWeaveIntervalMinutes,
       maxActorWeaveIntervalMinutes,
       gifChance: typeof settings.gifChance === "number" ? settings.gifChance : fallback.settings.gifChance,
+      encourageNsfw: typeof settings.encourageNsfw === "boolean" ? settings.encourageNsfw : fallback.settings.encourageNsfw,
       highQualityGifs: typeof settings.highQualityGifs === "boolean" ? settings.highQualityGifs : fallback.settings.highQualityGifs,
       includeChatContext: typeof settings.includeChatContext === "boolean" ? settings.includeChatContext : fallback.settings.includeChatContext,
       chatContextMessageCount: chatContextMessageCount(settings.chatContextMessageCount, fallback.settings.chatContextMessageCount),
