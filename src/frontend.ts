@@ -1,6 +1,9 @@
 import type { SpindleFrontendContext, SpindleSelectHandle } from 'lumiverse-spindle-types'
 import {
   MAX_WEAVE_LENGTH,
+  DEFAULT_GENERATION_MAX_TOKENS,
+  MAX_GENERATION_MAX_TOKENS,
+  MIN_GENERATION_MAX_TOKENS,
   REACTION_EMOJIS,
   type TimelineActor,
   type TimelineChatSource,
@@ -1426,6 +1429,34 @@ export function setup(ctx: SpindleFrontendContext) {
     chatContextControls.append(includeChatContext, chatContextCount, document.createTextNode('recent messages'))
     chatContextRow.append(chatContextLabels, chatContextControls)
     details.appendChild(chatContextRow)
+
+    const maxTokensRow = createElement('div', 'xtl-settings-row')
+    const maxTokensLabels = createElement('div')
+    maxTokensLabels.append(
+      createElement('div', 'xtl-settings-label', 'Maximum generation tokens'),
+      createElement('div', 'xtl-settings-hint', 'Caps each actor generation, including weaves, replies, and engagement selection. Higher values can use more of your model quota.'),
+    )
+    const maxTokensControls = createElement('div', 'xtl-interval-inputs')
+    const maxTokens = document.createElement('input')
+    maxTokens.type = 'number'
+    maxTokens.className = 'xtl-number-input'
+    maxTokens.min = String(MIN_GENERATION_MAX_TOKENS)
+    maxTokens.max = String(MAX_GENERATION_MAX_TOKENS)
+    maxTokens.step = '1'
+    maxTokens.value = String(state.state.settings.maxTokens ?? DEFAULT_GENERATION_MAX_TOKENS)
+    maxTokens.disabled = busy
+    maxTokens.setAttribute('aria-label', 'Maximum generation tokens')
+    maxTokens.addEventListener('change', () => {
+      const value = Math.max(
+        MIN_GENERATION_MAX_TOKENS,
+        Math.min(MAX_GENERATION_MAX_TOKENS, Math.round(Number(maxTokens.value) || DEFAULT_GENERATION_MAX_TOKENS)),
+      )
+      maxTokens.value = String(value)
+      send({ type: 'update_settings', maxTokens: value })
+    })
+    maxTokensControls.append(maxTokens, document.createTextNode('tokens'))
+    maxTokensRow.append(maxTokensLabels, maxTokensControls)
+    details.appendChild(maxTokensRow)
 
     const addSliderRow = (
       label: string,

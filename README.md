@@ -12,7 +12,7 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 - Council members and character cards as timeline actors, including actor-originated weaves and replies.
 - Chat weaves use the typed timeline message verbatim. When enabled, their configurable plain-text chat-context snapshot is retained privately for thread replies.
 - Per-user private timeline storage via `spindle.userStorage`.
-- A Timeline settings reset that clears posts, reactions, threads, and roster invitations while preserving the chosen persona, sidecar, and cadence.
+- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears posts, reactions, threads, and roster invitations while preserving those choices.
 
 ## Permissions
 

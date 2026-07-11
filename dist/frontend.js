@@ -1,5 +1,8 @@
 // src/shared.ts
 var MAX_WEAVE_LENGTH = 500;
+var MIN_GENERATION_MAX_TOKENS = 32;
+var MAX_GENERATION_MAX_TOKENS = 2048;
+var DEFAULT_GENERATION_MAX_TOKENS = 2048;
 var REACTION_EMOJIS = ["❤", "✨", "\uD83D\uDD25", "\uD83D\uDE02"];
 
 // src/frontend.ts
@@ -1243,6 +1246,27 @@ function setup(ctx) {
     chatContextControls.append(includeChatContext, chatContextCount, document2.createTextNode("recent messages"));
     chatContextRow.append(chatContextLabels, chatContextControls);
     details.appendChild(chatContextRow);
+    const maxTokensRow = createElement("div", "xtl-settings-row");
+    const maxTokensLabels = createElement("div");
+    maxTokensLabels.append(createElement("div", "xtl-settings-label", "Maximum generation tokens"), createElement("div", "xtl-settings-hint", "Caps each actor generation, including weaves, replies, and engagement selection. Higher values can use more of your model quota."));
+    const maxTokensControls = createElement("div", "xtl-interval-inputs");
+    const maxTokens = document2.createElement("input");
+    maxTokens.type = "number";
+    maxTokens.className = "xtl-number-input";
+    maxTokens.min = String(MIN_GENERATION_MAX_TOKENS);
+    maxTokens.max = String(MAX_GENERATION_MAX_TOKENS);
+    maxTokens.step = "1";
+    maxTokens.value = String(state.state.settings.maxTokens ?? DEFAULT_GENERATION_MAX_TOKENS);
+    maxTokens.disabled = busy;
+    maxTokens.setAttribute("aria-label", "Maximum generation tokens");
+    maxTokens.addEventListener("change", () => {
+      const value = Math.max(MIN_GENERATION_MAX_TOKENS, Math.min(MAX_GENERATION_MAX_TOKENS, Math.round(Number(maxTokens.value) || DEFAULT_GENERATION_MAX_TOKENS)));
+      maxTokens.value = String(value);
+      send({ type: "update_settings", maxTokens: value });
+    });
+    maxTokensControls.append(maxTokens, document2.createTextNode("tokens"));
+    maxTokensRow.append(maxTokensLabels, maxTokensControls);
+    details.appendChild(maxTokensRow);
     const addSliderRow = (label, hint, min, max, step, value, key) => {
       const row2 = createElement("div", "xtl-settings-row");
       const labels2 = createElement("div");

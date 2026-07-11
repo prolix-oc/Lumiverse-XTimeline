@@ -9,10 +9,13 @@ import type {
 import {
   createEmptyTimelineState,
   DEFAULT_CHAT_CONTEXT_MESSAGES,
+  DEFAULT_GENERATION_MAX_TOKENS,
   MAX_CHAT_CONTEXT_MESSAGES,
+  MAX_GENERATION_MAX_TOKENS,
   MAX_POSTS,
   MAX_ROSTER_ACTORS,
   MAX_WEAVE_LENGTH,
+  MIN_GENERATION_MAX_TOKENS,
   REACTION_EMOJIS,
   TIMELINE_STORAGE_PATH,
   type TimelineActor,
@@ -69,6 +72,14 @@ function chatContextMessageCount(value: unknown, fallback: number): number {
     : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(MAX_CHAT_CONTEXT_MESSAGES, Math.max(1, Math.round(parsed)))
+}
+
+function generationMaxTokens(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(MAX_GENERATION_MAX_TOKENS, Math.max(MIN_GENERATION_MAX_TOKENS, Math.round(parsed)))
 }
 
 function now(): number {
@@ -466,6 +477,7 @@ function normalizeState(value: unknown): TimelineState {
         settings.chatContextMessageCount,
         fallback.settings.chatContextMessageCount,
       ),
+      maxTokens: generationMaxTokens(settings.maxTokens, fallback.settings.maxTokens),
       temperature: typeof settings.temperature === 'number' ? settings.temperature : fallback.settings.temperature,
       topP: typeof settings.topP === 'number' ? settings.topP : fallback.settings.topP,
       presencePenalty: typeof settings.presencePenalty === 'number' ? settings.presencePenalty : fallback.settings.presencePenalty,
@@ -777,7 +789,6 @@ async function runSidecar(
   state: TimelineState,
   directory: TimelineDirectory,
   messages: LlmMessageDTO[],
-  maxTokens: number,
   userId: string,
 ): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
   const connection = getSidecarConnection(state, directory)
@@ -791,7 +802,7 @@ async function runSidecar(
       top_p: state.settings.topP ?? 1.0,
       presence_penalty: state.settings.presencePenalty ?? 0.0,
       frequency_penalty: state.settings.frequencyPenalty ?? 0.0,
-      max_tokens: maxTokens,
+      max_tokens: state.settings.maxTokens ?? DEFAULT_GENERATION_MAX_TOKENS,
     },
     reasoning: { source: 'off' },
   })
@@ -1087,7 +1098,7 @@ async function createActorReply(
   try {
     const thread = threadForPost(state, target)
     const chatContext = chatContextForPost(state, target)
-    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings.gifChance ?? 35, chatContext), 170, userId)
+    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings.gifChance ?? 35, chatContext), userId)
     if (!content) throw new Error('The Timeline model returned an empty reply.')
     state.posts.unshift(createPost({ author: actor, content, gifUrl, replyTo: target, source: 'model' }))
     state.posts = prunePosts(state.posts)
@@ -1143,7 +1154,7 @@ async function createActorWeave(payload: UnknownRecord, userId: string): Promise
   const userPersona = getPersonaAuthor(directory, undefined, state.settings)
   sendActivity(userId, true, actor.name)
   try {
-    const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), 170, userId)
+    const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), userId)
     state.posts.unshift(createPost({ author: actor, content, gifUrl, source: 'model' }))
     state.posts = prunePosts(state.posts)
     await saveState(state, userId)
@@ -1180,7 +1191,7 @@ async function createScheduledRosterWeave(userId: string): Promise<void> {
   sendActivity(userId, true, actor.name)
   try {
     const createOriginalWeave = async () => {
-      const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), 170, userId)
+      const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), userId)
       state.posts.unshift(createPost({ author: actor, content, gifUrl, source: 'model' }))
       state.posts = prunePosts(state.posts)
     }
@@ -1191,7 +1202,7 @@ async function createScheduledRosterWeave(userId: string): Promise<void> {
       recordRosterAction(state, action)
     } else {
       const candidates = targetablePostsForAction(state.posts, actor, action)
-      const engagement = await runSidecar(state, directory, timelineEngagementMessages(actor, action, candidates), 100, userId)
+      const engagement = await runSidecar(state, directory, timelineEngagementMessages(actor, action, candidates), userId)
       const decision = parseTimelineEngagementDecision(engagement.content)
       const target = candidates.find((post) => post.id === decision.targetId)
         ?? candidates[Math.floor(Math.random() * candidates.length)]
@@ -1309,6 +1320,9 @@ async function updateSettings(payload: UnknownRecord, userId: string): Promise<v
       payload.chatContextMessageCount,
       state.settings.chatContextMessageCount,
     )
+  }
+  if (typeof payload.maxTokens === 'number' || typeof payload.maxTokens === 'string') {
+    state.settings.maxTokens = generationMaxTokens(payload.maxTokens, state.settings.maxTokens)
   }
   if (typeof payload.temperature === 'number') {
     state.settings.temperature = Math.max(0, Math.min(2, payload.temperature))

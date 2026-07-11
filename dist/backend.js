@@ -6,6 +6,9 @@ var MAX_POSTS = 320;
 var MAX_ROSTER_ACTORS = 30;
 var MAX_CHAT_CONTEXT_MESSAGES = 30;
 var DEFAULT_CHAT_CONTEXT_MESSAGES = 10;
+var MIN_GENERATION_MAX_TOKENS = 32;
+var MAX_GENERATION_MAX_TOKENS = 2048;
+var DEFAULT_GENERATION_MAX_TOKENS = 2048;
 var REACTION_EMOJIS = ["\u2764", "\u2728", "\uD83D\uDD25", "\uD83D\uDE02"];
 function createEmptyTimelineState() {
   return {
@@ -25,6 +28,7 @@ function createEmptyTimelineState() {
       highQualityGifs: false,
       includeChatContext: true,
       chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
+      maxTokens: DEFAULT_GENERATION_MAX_TOKENS,
       temperature: 0.85,
       topP: 1,
       presencePenalty: 0,
@@ -59,6 +63,12 @@ function chatContextMessageCount(value, fallback) {
   if (!Number.isFinite(parsed))
     return fallback;
   return Math.min(MAX_CHAT_CONTEXT_MESSAGES, Math.max(1, Math.round(parsed)));
+}
+function generationMaxTokens(value, fallback) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed))
+    return fallback;
+  return Math.min(MAX_GENERATION_MAX_TOKENS, Math.max(MIN_GENERATION_MAX_TOKENS, Math.round(parsed)));
 }
 function now() {
   return Date.now();
@@ -392,6 +402,7 @@ function normalizeState(value) {
       highQualityGifs: typeof settings.highQualityGifs === "boolean" ? settings.highQualityGifs : fallback.settings.highQualityGifs,
       includeChatContext: typeof settings.includeChatContext === "boolean" ? settings.includeChatContext : fallback.settings.includeChatContext,
       chatContextMessageCount: chatContextMessageCount(settings.chatContextMessageCount, fallback.settings.chatContextMessageCount),
+      maxTokens: generationMaxTokens(settings.maxTokens, fallback.settings.maxTokens),
       temperature: typeof settings.temperature === "number" ? settings.temperature : fallback.settings.temperature,
       topP: typeof settings.topP === "number" ? settings.topP : fallback.settings.topP,
       presencePenalty: typeof settings.presencePenalty === "number" ? settings.presencePenalty : fallback.settings.presencePenalty,
@@ -653,7 +664,7 @@ async function extractAndResolveGif(content) {
   cleanContent = cleanContent.replace(/<reaction>.*?<\/reaction>/gis, "").trim();
   return { content: cleanContent, gifUrl, reaction };
 }
-async function runSidecar(state, directory, messages, maxTokens, userId) {
+async function runSidecar(state, directory, messages, userId) {
   const connection = getSidecarConnection(state, directory);
   const result = await spindle.generate.quiet({
     type: "quiet",
@@ -665,7 +676,7 @@ async function runSidecar(state, directory, messages, maxTokens, userId) {
       top_p: state.settings.topP ?? 1,
       presence_penalty: state.settings.presencePenalty ?? 0,
       frequency_penalty: state.settings.frequencyPenalty ?? 0,
-      max_tokens: maxTokens
+      max_tokens: state.settings.maxTokens ?? DEFAULT_GENERATION_MAX_TOKENS
     },
     reasoning: { source: "off" }
   });
@@ -901,7 +912,7 @@ async function createActorReply(state, directory, target, actorKey, userId, fall
   try {
     const thread = threadForPost(state, target);
     const chatContext = chatContextForPost(state, target);
-    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings.gifChance ?? 35, chatContext), 170, userId);
+    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings.gifChance ?? 35, chatContext), userId);
     if (!content)
       throw new Error("The Timeline model returned an empty reply.");
     state.posts.unshift(createPost({ author: actor, content, gifUrl, replyTo: target, source: "model" }));
@@ -950,7 +961,7 @@ async function createActorWeave(payload, userId) {
   const userPersona = getPersonaAuthor(directory, undefined, state.settings);
   sendActivity(userId, true, actor.name);
   try {
-    const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), 170, userId);
+    const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), userId);
     state.posts.unshift(createPost({ author: actor, content, gifUrl, source: "model" }));
     state.posts = prunePosts(state.posts);
     await saveState(state, userId);
@@ -984,7 +995,7 @@ async function createScheduledRosterWeave(userId) {
   sendActivity(userId, true, actor.name);
   try {
     const createOriginalWeave = async () => {
-      const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), 170, userId);
+      const { content, gifUrl } = await runSidecar(state, directory, originalWeaveMessages(actor, state.settings.gifChance ?? 35, state.posts, userPersona), userId);
       state.posts.unshift(createPost({ author: actor, content, gifUrl, source: "model" }));
       state.posts = prunePosts(state.posts);
     };
@@ -994,7 +1005,7 @@ async function createScheduledRosterWeave(userId) {
       recordRosterAction(state, action);
     } else {
       const candidates = targetablePostsForAction(state.posts, actor, action);
-      const engagement = await runSidecar(state, directory, timelineEngagementMessages(actor, action, candidates), 100, userId);
+      const engagement = await runSidecar(state, directory, timelineEngagementMessages(actor, action, candidates), userId);
       const decision = parseTimelineEngagementDecision(engagement.content);
       const target = candidates.find((post) => post.id === decision.targetId) ?? candidates[Math.floor(Math.random() * candidates.length)];
       if (!target) {
@@ -1090,6 +1101,9 @@ async function updateSettings(payload, userId) {
   }
   if (typeof payload.chatContextMessageCount === "number" || typeof payload.chatContextMessageCount === "string") {
     state.settings.chatContextMessageCount = chatContextMessageCount(payload.chatContextMessageCount, state.settings.chatContextMessageCount);
+  }
+  if (typeof payload.maxTokens === "number" || typeof payload.maxTokens === "string") {
+    state.settings.maxTokens = generationMaxTokens(payload.maxTokens, state.settings.maxTokens);
   }
   if (typeof payload.temperature === "number") {
     state.settings.temperature = Math.max(0, Math.min(2, payload.temperature));

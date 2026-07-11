@@ -4,6 +4,9 @@ export const MAX_POSTS = 320
 export const MAX_ROSTER_ACTORS = 30
 export const MAX_CHAT_CONTEXT_MESSAGES = 30
 export const DEFAULT_CHAT_CONTEXT_MESSAGES = 10
+export const MIN_GENERATION_MAX_TOKENS = 32
+export const MAX_GENERATION_MAX_TOKENS = 2_048
+export const DEFAULT_GENERATION_MAX_TOKENS = 2_048
 export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
 export type TimelineActorKind = 'persona' | 'character' | 'council'
@@ -61,6 +64,7 @@ export interface TimelineSettings {
   highQualityGifs?: boolean
   includeChatContext: boolean
   chatContextMessageCount: number
+  maxTokens: number
   temperature?: number
   topP?: number
   presencePenalty?: number
@@ -113,6 +117,7 @@ export function createEmptyTimelineState(): TimelineState {
       highQualityGifs: false,
       includeChatContext: true,
       chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
+      maxTokens: DEFAULT_GENERATION_MAX_TOKENS,
       temperature: 0.85,
       topP: 1.0,
       presencePenalty: 0.0,
