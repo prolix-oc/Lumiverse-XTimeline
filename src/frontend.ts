@@ -1376,6 +1376,14 @@ export function setup(ctx: SpindleFrontendContext) {
     })
     actions.appendChild(reply)
 
+    if (post.author.kind !== 'persona') {
+      const directMessage = button('Message', 'xtl-button xtl-button--quiet')
+      directMessage.title = `Continue privately with ${post.author.name}`
+      directMessage.disabled = dmBusy || !state.permissions.includes('generation')
+      directMessage.addEventListener('click', () => openDirectConversation(post.author.key))
+      actions.appendChild(directMessage)
+    }
+
     if (state.permissions.includes('generation') && state.replyActors.length) {
       const invite = createActorReplyPicker(state, {
         value: '',
@@ -2078,13 +2086,13 @@ export function setup(ctx: SpindleFrontendContext) {
     const resetLabels = createElement('div')
     resetLabels.append(
       createElement('div', 'xtl-settings-label', 'Reset timeline'),
-      createElement('div', 'xtl-settings-hint', 'Deletes all weaves, reactions, and threads. Followed actors, their schedule, and your saved settings stay in place.'),
+      createElement('div', 'xtl-settings-hint', 'Deletes public weaves, reactions, and timeline reply threads. Direct messages, followed actors, their schedule, and saved settings stay in place.'),
     )
     const reset = button('Reset timeline', 'xtl-button xtl-button--danger')
     reset.disabled = busy
     reset.addEventListener('click', () => {
       const confirmed = tab.root.ownerDocument.defaultView?.confirm(
-        'Reset this timeline? All weaves, reactions, and threads will be deleted. Followed actors and settings will stay in place.',
+        'Reset this timeline? All public weaves, reactions, and timeline reply threads will be deleted. Direct messages, followed actors, and settings will stay in place.',
       )
       if (!confirmed) return
       draft = ''
@@ -2157,6 +2165,13 @@ export function setup(ctx: SpindleFrontendContext) {
       snapshot = message.snapshot
       updateDmBadge(snapshot)
       if (pendingDraft) pendingDraft = null
+      if (pendingDirectMessage) {
+        const sent = snapshot.state.directThreads
+          .find((thread) => thread.id === pendingDirectMessage?.threadId)
+          ?.messages.some((directMessage) => directMessage.direction === 'outgoing'
+            && directMessage.content === pendingDirectMessage?.content)
+        if (sent) pendingDirectMessage = null
+      }
       if (pendingDirectActorKey) {
         const createdThread = snapshot.state.directThreads.find((thread) => thread.actor.key === pendingDirectActorKey)
         if (createdThread) {

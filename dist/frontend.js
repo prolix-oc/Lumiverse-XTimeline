@@ -302,6 +302,8 @@ function setup(ctx) {
   let newActorWeaveCount = 0;
   let timelineIsPastTop = false;
   let activeDirectThreadId = null;
+  let dmNewThreadOpen = false;
+  let directMessagesVisible = false;
   let selectedDirectActorKey = "";
   let pendingDirectActorKey = null;
   let dmDraft = "";
@@ -521,7 +523,7 @@ function setup(ctx) {
     .xtl-number-input { width: 64px; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 9px; background: #0a0d11; color: #f4f7fa; padding: 7px 6px; font: inherit; font-size: 12px; font-weight: 650; }
     .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
-    @media (max-width: 680px) { .xtl-dms-app { padding-inline: 9px; } .xtl-dm-shell { display: block; min-height: 0; } .xtl-dm-inbox { min-height: 440px; border-right: 0; } .xtl-dm-main { min-height: calc(100vh - 120px); } .xtl-dm-shell--thread-open .xtl-dm-inbox { display: none; } .xtl-dm-shell:not(.xtl-dm-shell--thread-open) .xtl-dm-main { display: none; } .xtl-dm-thread-header::before { content: '‹'; color: #b9e0ff; font-size: 30px; line-height: .6; } .xtl-dm-message-row { max-width: 93%; } }
+    @media (max-width: 680px) { .xtl-dms-app { padding-inline: 9px; } .xtl-dm-shell { display: block; min-height: 0; } .xtl-dm-inbox { min-height: 440px; border-right: 0; } .xtl-dm-main { min-height: calc(100vh - 120px); } .xtl-dm-shell--thread-open .xtl-dm-inbox, .xtl-dm-shell--new-thread .xtl-dm-inbox { display: none; } .xtl-dm-shell:not(.xtl-dm-shell--thread-open):not(.xtl-dm-shell--new-thread) .xtl-dm-main { display: none; } .xtl-dm-message-row { max-width: 93%; } }
     @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } .xtl-dm-gif-search, .xtl-dm-gif-chip { margin-left: 0; max-width: 100%; } }
   `);
   const selectedPersona = () => {
@@ -1207,6 +1209,13 @@ function setup(ctx) {
       focusComposer();
     });
     actions.appendChild(reply);
+    if (post.author.kind !== "persona") {
+      const directMessage = button("Message", "xtl-button xtl-button--quiet");
+      directMessage.title = `Continue privately with ${post.author.name}`;
+      directMessage.disabled = dmBusy || !state.permissions.includes("generation");
+      directMessage.addEventListener("click", () => openDirectConversation(post.author.key));
+      actions.appendChild(directMessage);
+    }
     if (state.permissions.includes("generation") && state.replyActors.length) {
       const invite = createActorReplyPicker(state, {
         value: "",
@@ -1250,6 +1259,7 @@ function setup(ctx) {
   };
   function selectDirectThread(threadId) {
     activeDirectThreadId = threadId;
+    dmNewThreadOpen = false;
     selectedDirectActorKey = "";
     dmGifPickerOpen = false;
     dmGifSearch = "";
@@ -1265,6 +1275,7 @@ function setup(ctx) {
       selectDirectThread(existing.id);
       return;
     }
+    dmNewThreadOpen = true;
     selectedDirectActorKey = actorKey;
     pendingDirectActorKey = actorKey;
     dmBusy = true;
@@ -1286,6 +1297,7 @@ function setup(ctx) {
     start.disabled = dmBusy || !state.permissions.includes("generation") || state.replyActors.length === 0;
     start.addEventListener("click", () => {
       activeDirectThreadId = null;
+      dmNewThreadOpen = true;
       selectedDirectActorKey = "";
       dmError = "";
       renderDms();
@@ -1444,6 +1456,7 @@ function setup(ctx) {
     back.setAttribute("aria-label", "Back to messages");
     back.addEventListener("click", () => {
       activeDirectThreadId = null;
+      dmNewThreadOpen = false;
       renderDms();
     });
     const title = createElement("div", "xtl-dm-thread-title");
@@ -1513,7 +1526,7 @@ function setup(ctx) {
       return;
     }
     const activeThread = activeDirectThread();
-    const shell = createElement("div", `xtl-card xtl-dm-shell${activeThread ? " xtl-dm-shell--thread-open" : ""}`);
+    const shell = createElement("div", `xtl-card xtl-dm-shell${activeThread ? " xtl-dm-shell--thread-open" : ""}${dmNewThreadOpen ? " xtl-dm-shell--new-thread" : ""}`);
     shell.append(renderDirectInbox(snapshot), activeThread ? renderDirectThread(activeThread, snapshot) : renderDirectWelcome(snapshot));
     dmsRoot.appendChild(shell);
   };
@@ -1810,11 +1823,11 @@ function setup(ctx) {
     addSliderRow("Frequency Penalty", "How much to penalize new tokens based on their existing frequency in the text so far.", 0, 2, 0.05, state.state.settings.frequencyPenalty ?? 0, "frequencyPenalty");
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
-    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, and threads. Followed actors, their schedule, and your saved settings stay in place."));
+    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes public weaves, reactions, and timeline reply threads. Direct messages, followed actors, their schedule, and saved settings stay in place."));
     const reset = button("Reset timeline", "xtl-button xtl-button--danger");
     reset.disabled = busy;
     reset.addEventListener("click", () => {
-      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All weaves, reactions, and threads will be deleted. Followed actors and settings will stay in place.");
+      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All public weaves, reactions, and timeline reply threads will be deleted. Direct messages, followed actors, and settings will stay in place.");
       if (!confirmed)
         return;
       draft = "";
@@ -1882,12 +1895,18 @@ function setup(ctx) {
       updateDmBadge(snapshot);
       if (pendingDraft)
         pendingDraft = null;
+      if (pendingDirectMessage) {
+        const sent = snapshot.state.directThreads.find((thread) => thread.id === pendingDirectMessage?.threadId)?.messages.some((directMessage) => directMessage.direction === "outgoing" && directMessage.content === pendingDirectMessage?.content);
+        if (sent)
+          pendingDirectMessage = null;
+      }
       if (pendingDirectActorKey) {
         const createdThread = snapshot.state.directThreads.find((thread) => thread.actor.key === pendingDirectActorKey);
         if (createdThread) {
           activeDirectThreadId = createdThread.id;
           selectedDirectActorKey = "";
           pendingDirectActorKey = null;
+          send({ type: "read_direct_thread", threadId: createdThread.id });
         }
       }
       if (activeDirectThreadId && !snapshot.state.directThreads.some((thread) => thread.id === activeDirectThreadId)) {
@@ -1897,6 +1916,10 @@ function setup(ctx) {
         inviteActorKey = "";
       render();
       renderDms();
+      const openThread = activeDirectThread();
+      if (directMessagesVisible && openThread && unreadDirectMessages(openThread)) {
+        send({ type: "read_direct_thread", threadId: openThread.id });
+      }
       renderFollowModal();
       return;
     }
@@ -1957,8 +1980,12 @@ function setup(ctx) {
     render();
     focusComposer();
   });
-  const unsubscribeActivate = tab.onActivate(() => send({ type: "load_timeline" }));
+  const unsubscribeActivate = tab.onActivate(() => {
+    directMessagesVisible = false;
+    send({ type: "load_timeline" });
+  });
   const unsubscribeDmsActivate = dmsTab.onActivate(() => {
+    directMessagesVisible = true;
     send({ type: "load_timeline" });
     if (activeDirectThreadId)
       send({ type: "read_direct_thread", threadId: activeDirectThreadId });

@@ -1295,6 +1295,7 @@ async function startDirectThread(payload: UnknownRecord, userId: string): Promis
   const existing = state.directThreads.find((thread) => thread.actor.key === actor.key)
   if (existing) {
     await sendState(userId, state, directory)
+    sendActivity(userId, false, undefined, 'dm')
     return
   }
 

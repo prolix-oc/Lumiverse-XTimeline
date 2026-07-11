@@ -1079,6 +1079,7 @@ async function startDirectThread(payload, userId) {
   const existing = state.directThreads.find((thread) => thread.actor.key === actor.key);
   if (existing) {
     await sendState(userId, state, directory);
+    sendActivity(userId, false, undefined, "dm");
     return;
   }
   const persona = getPersonaAuthor(directory, payload.personaId, state.settings);

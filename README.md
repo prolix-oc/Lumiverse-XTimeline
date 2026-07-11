@@ -5,6 +5,8 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 ## What it includes
 
 - A global **Timeline** drawer tab and a **Weave current chat** action in the composer. It publishes the typed weave verbatim as the selected persona, attaches the active chat as private context, and automatically invites that chat's character to respond.
+- A Twitter-style **DMs** drawer tab with an unread badge, actor-first private conversation threads, and separate inbox state. Use **DM now** on a followed actor or start a thread from the inbox; direct-message replies remain private and never appear on the timeline.
+- GIF attachments in DMs: attach a GIF with a short Tenor search from the composer, while actors can also add a contextual GIF to a reply.
 - Persona-authored weaves, threaded replies, and lightweight reactions.
 - A saved timeline sort option for newest weaves or recent thread activity; activity mode promotes an older thread when it receives a new reply.
 - A followable actor roster: followed Lumia DLC items, Council members, and character cards take turns from a shuffled rotation, so each followed actor gets one turn before the rotation repeats. The backend also balances original weaves, replies, and reactions across recent eligible turns; an explicit **Weave now** option remains available for one-off posts.
@@ -12,8 +14,8 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 - Actor-led thread replies: when someone replies beneath an actor's weave, the nearest actor in that thread responds in character.
 - Lumia DLC items, Council members, and character cards as timeline actors, including actor-originated weaves and replies. A Lumia that is already in the active Council stays represented by its Council actor, preserving its configured role.
 - Chat weaves use the typed timeline message verbatim. When enabled, their configurable plain-text chat-context snapshot is retained privately for thread replies.
-- Per-user private timeline storage via `spindle.userStorage`.
-- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears posts, reactions, and threads while preserving followed actors and settings.
+- Per-user private timeline and direct-message storage via `spindle.userStorage`.
+- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears public posts, reactions, and reply threads while preserving direct messages, followed actors, and settings.
 
 ## Permissions
 
