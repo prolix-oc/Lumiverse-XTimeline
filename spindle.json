@@ -1,8 +1,8 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Lumiverse Timeline",
   "identifier": "lumiverse_timeline",
-  "author": "Darran Hall",
+  "author": "Prolix OCs",
   "github": "https://github.com/darranhall/Lumiverse-XTimeline",
   "homepage": "https://github.com/darranhall/Lumiverse-XTimeline",
   "description": "A private social timeline for personas, character cards, and Council members.",
@@ -16,5 +16,5 @@
   ],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
-  "minimum_lumiverse_version": "0.6.0"
+  "minimum_lumiverse_version": "1.0.6"
 }
