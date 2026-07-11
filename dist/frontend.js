@@ -213,6 +213,7 @@ function setup(ctx) {
   let actorSearch = "";
   let mentionedActorKeys = [];
   let personaPicker = null;
+  let sliderHandles = [];
   let disposeMentionPortal = null;
   const tab = ctx.ui.registerDrawerTab({
     id: "timeline",
@@ -684,7 +685,8 @@ function setup(ctx) {
     article.appendChild(createElement("div", "xtl-post-body", post.content));
     if (post.gifUrl) {
       const img = document.createElement("img");
-      img.src = post.gifUrl;
+      const hq = Boolean(state.state.settings.highQualityGifs);
+      img.src = hq ? post.gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAC/") : post.gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAM/");
       img.className = "xtl-post-gif";
       img.alt = "";
       article.appendChild(img);
@@ -971,6 +973,32 @@ function setup(ctx) {
     chatContextControls.append(includeChatContext, chatContextCount, document.createTextNode("recent messages"));
     chatContextRow.append(chatContextLabels, chatContextControls);
     details.appendChild(chatContextRow);
+    const addSliderRow = (label, hint, min, max, step, value, key) => {
+      const row2 = createElement("div", "xtl-settings-row");
+      const labels2 = createElement("div");
+      labels2.append(createElement("div", "xtl-settings-label", label), createElement("div", "xtl-settings-hint", hint));
+      const sliderContainer = createElement("div");
+      sliderContainer.style.flex = "1";
+      sliderContainer.style.minWidth = "200px";
+      sliderContainer.style.marginLeft = "16px";
+      row2.append(labels2, sliderContainer);
+      details.appendChild(row2);
+      const handle = ctx.components.mountRangeSlider(sliderContainer, {
+        min,
+        max,
+        step,
+        value,
+        disabled: busy,
+        label,
+        format: { decimals: 2 },
+        onCommit: (val) => send({ type: "update_settings", [key]: val })
+      });
+      sliderHandles.push(handle);
+    };
+    addSliderRow("Temperature", "Controls randomness: Lowering results in less random completions.", 0, 2, 0.05, state.state.settings.temperature ?? 0.85, "temperature");
+    addSliderRow("Top P", "Controls diversity via nucleus sampling: 0.5 means half of all likelihood-weighted options are considered.", 0, 1, 0.01, state.state.settings.topP ?? 1, "topP");
+    addSliderRow("Presence Penalty", "How much to penalize new tokens based on whether they appear in the text so far.", 0, 2, 0.05, state.state.settings.presencePenalty ?? 0, "presencePenalty");
+    addSliderRow("Frequency Penalty", "How much to penalize new tokens based on their existing frequency in the text so far.", 0, 2, 0.05, state.state.settings.frequencyPenalty ?? 0, "frequencyPenalty");
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
     resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, threads, and roster invitations. Your persona, sidecar, and cadence settings stay saved."));
@@ -1011,6 +1039,8 @@ function setup(ctx) {
     disposeMentionPortal = null;
     personaPicker?.destroy();
     personaPicker = null;
+    sliderHandles.forEach((h) => h.destroy());
+    sliderHandles = [];
     root.replaceChildren(renderHeader());
     const renderedError = renderError();
     if (renderedError)
@@ -1081,6 +1111,8 @@ function setup(ctx) {
     disposeMentionPortal = null;
     personaPicker?.destroy();
     personaPicker = null;
+    sliderHandles.forEach((h) => h.destroy());
+    sliderHandles = [];
     unsubscribeMessages();
     unsubscribeInputAction();
     unsubscribeActivate();

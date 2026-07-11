@@ -455,6 +455,10 @@ function normalizeState(value: unknown): TimelineState {
         settings.chatContextMessageCount,
         fallback.settings.chatContextMessageCount,
       ),
+      temperature: typeof settings.temperature === 'number' ? settings.temperature : fallback.settings.temperature,
+      topP: typeof settings.topP === 'number' ? settings.topP : fallback.settings.topP,
+      presencePenalty: typeof settings.presencePenalty === 'number' ? settings.presencePenalty : fallback.settings.presencePenalty,
+      frequencyPenalty: typeof settings.frequencyPenalty === 'number' ? settings.frequencyPenalty : fallback.settings.frequencyPenalty,
     },
   }
 }
@@ -685,7 +689,7 @@ function getSidecarConnection(state: TimelineState, directory: TimelineDirectory
   return connection
 }
 
-async function extractAndResolveGif(content: string, highQualityGifs: boolean): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
+async function extractAndResolveGif(content: string): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
   let cleanContent = content
   let gifUrl: string | undefined
   let reaction: string | undefined
@@ -708,11 +712,9 @@ async function extractAndResolveGif(content: string, highQualityGifs: boolean): 
             
             for (const candidate of candidates) {
               try {
-                // Upgrade Tenor low-res 'AAAAM' or similar thumbnail CDN slugs to 'AAAAC' for High Quality Original GIFs
-                const hqCandidate = highQualityGifs ? candidate.replace(/AAAA[A-Za-z]\//, 'AAAAC/') : candidate
-                const checkRes = await fetch(hqCandidate, { method: 'HEAD', signal: AbortSignal.timeout(3000) })
+                const checkRes = await fetch(candidate, { method: 'HEAD', signal: AbortSignal.timeout(3000) })
                 if (checkRes.ok && checkRes.headers.get('content-type')?.includes('image/gif')) {
-                  gifUrl = hqCandidate
+                  gifUrl = candidate
                   break
                 }
               } catch (e) {
@@ -751,7 +753,10 @@ async function runSidecar(
     connection_id: connection.id,
     messages,
     parameters: {
-      temperature: 0.85,
+      temperature: state.settings.temperature ?? 0.85,
+      top_p: state.settings.topP ?? 1.0,
+      presence_penalty: state.settings.presencePenalty ?? 0.0,
+      frequency_penalty: state.settings.frequencyPenalty ?? 0.0,
       max_tokens: maxTokens,
     },
     reasoning: { source: 'off' },
@@ -1182,6 +1187,18 @@ async function updateSettings(payload: UnknownRecord, userId: string): Promise<v
       payload.chatContextMessageCount,
       state.settings.chatContextMessageCount,
     )
+  }
+  if (typeof payload.temperature === 'number') {
+    state.settings.temperature = Math.max(0, Math.min(2, payload.temperature))
+  }
+  if (typeof payload.topP === 'number') {
+    state.settings.topP = Math.max(0, Math.min(1, payload.topP))
+  }
+  if (typeof payload.presencePenalty === 'number') {
+    state.settings.presencePenalty = Math.max(0, Math.min(2, payload.presencePenalty))
+  }
+  if (typeof payload.frequencyPenalty === 'number') {
+    state.settings.frequencyPenalty = Math.max(0, Math.min(2, payload.frequencyPenalty))
   }
   if (scheduleChanged && state.rosterActorKeys.length) {
     state.nextRosterWeaveAt = nextRosterWeaveAt(state.settings)

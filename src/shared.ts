@@ -60,6 +60,10 @@ export interface TimelineSettings {
   highQualityGifs?: boolean
   includeChatContext: boolean
   chatContextMessageCount: number
+  temperature?: number
+  topP?: number
+  presencePenalty?: number
+  frequencyPenalty?: number
 }
 
 export interface TimelineState {
@@ -102,6 +106,10 @@ export function createEmptyTimelineState(): TimelineState {
       highQualityGifs: false,
       includeChatContext: true,
       chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
+      temperature: 0.85,
+      topP: 1.0,
+      presencePenalty: 0.0,
+      frequencyPenalty: 0.0,
     },
   }
 }

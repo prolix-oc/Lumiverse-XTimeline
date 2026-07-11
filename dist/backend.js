@@ -21,7 +21,11 @@ function createEmptyTimelineState() {
       gifChance: 35,
       highQualityGifs: false,
       includeChatContext: true,
-      chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES
+      chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
+      temperature: 0.85,
+      topP: 1,
+      presencePenalty: 0,
+      frequencyPenalty: 0
     }
   };
 }
@@ -380,7 +384,11 @@ function normalizeState(value) {
       gifChance: typeof settings.gifChance === "number" ? settings.gifChance : fallback.settings.gifChance,
       highQualityGifs: typeof settings.highQualityGifs === "boolean" ? settings.highQualityGifs : fallback.settings.highQualityGifs,
       includeChatContext: typeof settings.includeChatContext === "boolean" ? settings.includeChatContext : fallback.settings.includeChatContext,
-      chatContextMessageCount: chatContextMessageCount(settings.chatContextMessageCount, fallback.settings.chatContextMessageCount)
+      chatContextMessageCount: chatContextMessageCount(settings.chatContextMessageCount, fallback.settings.chatContextMessageCount),
+      temperature: typeof settings.temperature === "number" ? settings.temperature : fallback.settings.temperature,
+      topP: typeof settings.topP === "number" ? settings.topP : fallback.settings.topP,
+      presencePenalty: typeof settings.presencePenalty === "number" ? settings.presencePenalty : fallback.settings.presencePenalty,
+      frequencyPenalty: typeof settings.frequencyPenalty === "number" ? settings.frequencyPenalty : fallback.settings.frequencyPenalty
     }
   };
 }
@@ -574,7 +582,7 @@ function getSidecarConnection(state, directory) {
     throw new Error("The selected Timeline sidecar connection does not have an API key.");
   return connection;
 }
-async function extractAndResolveGif(content, highQualityGifs) {
+async function extractAndResolveGif(content) {
   let cleanContent = content;
   let gifUrl;
   let reaction;
@@ -594,10 +602,9 @@ async function extractAndResolveGif(content, highQualityGifs) {
             candidates.sort(() => Math.random() - 0.5);
             for (const candidate of candidates) {
               try {
-                const hqCandidate = highQualityGifs ? candidate.replace(/AAAA[A-Za-z]\//, "AAAAC/") : candidate;
-                const checkRes = await fetch(hqCandidate, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+                const checkRes = await fetch(candidate, { method: "HEAD", signal: AbortSignal.timeout(3000) });
                 if (checkRes.ok && checkRes.headers.get("content-type")?.includes("image/gif")) {
-                  gifUrl = hqCandidate;
+                  gifUrl = candidate;
                   break;
                 }
               } catch (e) {}
@@ -625,7 +632,10 @@ async function runSidecar(state, directory, messages, maxTokens, userId) {
     connection_id: connection.id,
     messages,
     parameters: {
-      temperature: 0.85,
+      temperature: state.settings.temperature ?? 0.85,
+      top_p: state.settings.topP ?? 1,
+      presence_penalty: state.settings.presencePenalty ?? 0,
+      frequency_penalty: state.settings.frequencyPenalty ?? 0,
       max_tokens: maxTokens
     },
     reasoning: { source: "off" }
@@ -990,6 +1000,18 @@ async function updateSettings(payload, userId) {
   }
   if (typeof payload.chatContextMessageCount === "number" || typeof payload.chatContextMessageCount === "string") {
     state.settings.chatContextMessageCount = chatContextMessageCount(payload.chatContextMessageCount, state.settings.chatContextMessageCount);
+  }
+  if (typeof payload.temperature === "number") {
+    state.settings.temperature = Math.max(0, Math.min(2, payload.temperature));
+  }
+  if (typeof payload.topP === "number") {
+    state.settings.topP = Math.max(0, Math.min(1, payload.topP));
+  }
+  if (typeof payload.presencePenalty === "number") {
+    state.settings.presencePenalty = Math.max(0, Math.min(2, payload.presencePenalty));
+  }
+  if (typeof payload.frequencyPenalty === "number") {
+    state.settings.frequencyPenalty = Math.max(0, Math.min(2, payload.frequencyPenalty));
   }
   if (scheduleChanged && state.rosterActorKeys.length) {
     state.nextRosterWeaveAt = nextRosterWeaveAt(state.settings);
