@@ -1413,12 +1413,11 @@ async function updateSettings(payload: UnknownRecord, userId: string): Promise<v
 
 async function resetTimeline(userId: string): Promise<void> {
   const [currentState, directory] = await Promise.all([loadState(userId), loadDirectory(userId)])
-  const state = createEmptyTimelineState()
-  state.settings = currentState.settings
-  await saveState(state, userId)
-  scheduleRosterTimer(userId, state)
+  currentState.posts = []
+  await saveState(currentState, userId)
+  scheduleRosterTimer(userId, currentState)
   sendActivity(userId, false)
-  await sendState(userId, state, directory)
+  await sendState(userId, currentState, directory)
 }
 
 async function toggleRosterActor(payload: UnknownRecord, userId: string): Promise<void> {

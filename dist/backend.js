@@ -1185,12 +1185,11 @@ async function updateSettings(payload, userId) {
 }
 async function resetTimeline(userId) {
   const [currentState, directory] = await Promise.all([loadState(userId), loadDirectory(userId)]);
-  const state = createEmptyTimelineState();
-  state.settings = currentState.settings;
-  await saveState(state, userId);
-  scheduleRosterTimer(userId, state);
+  currentState.posts = [];
+  await saveState(currentState, userId);
+  scheduleRosterTimer(userId, currentState);
   sendActivity(userId, false);
-  await sendState(userId, state, directory);
+  await sendState(userId, currentState, directory);
 }
 async function toggleRosterActor(payload, userId) {
   const [state, directory] = await Promise.all([loadState(userId), loadDirectory(userId)]);

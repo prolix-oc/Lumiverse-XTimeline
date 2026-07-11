@@ -270,7 +270,6 @@ function setup(ctx) {
   let busyActorName = null;
   let error = "";
   let pendingDraft = null;
-  let actorSearch = "";
   let mentionedActorKeys = [];
   let personaPicker = null;
   let sliderHandles = [];
@@ -278,7 +277,10 @@ function setup(ctx) {
   let disposeActorPickerPortal = null;
   let disposeReactionTooltip = null;
   let timelineTopMarker = null;
+  let timelineManagementMarker = null;
   let newWeavePill = null;
+  let followModal = null;
+  let followModalSearch = "";
   let knownActorWeaveIds = null;
   let newActorWeaveCount = 0;
   let timelineIsPastTop = false;
@@ -298,7 +300,7 @@ function setup(ctx) {
     .xtl-header { position: sticky; top: 4px; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 4px -6px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border: 1px solid color-mix(in srgb, var(--xtl-line) 88%, transparent); border-radius: 12px; backdrop-filter: blur(16px); }
     .xtl-header-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #f5f8fa; font-size: 20px; font-weight: 900; line-height: 1; }
     .xtl-title { flex: 1; margin: 0; font-size: 18px; line-height: 1.1; letter-spacing: -.02em; font-weight: 850; }
-    .xtl-header-refresh { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-color: transparent; font-size: 18px; }
+    .xtl-header-refresh, .xtl-header-jump { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-color: transparent; font-size: 18px; }
     .xtl-card { background: var(--xtl-surface); border: 1px solid var(--xtl-line); border-radius: 16px; margin: 12px 0; overflow: visible; box-shadow: 0 10px 26px rgb(0 0 0 / 11%); }
     .xtl-composer { padding: 14px; background: linear-gradient(145deg, color-mix(in srgb, var(--xtl-blue) 10%, var(--xtl-surface)), var(--xtl-surface) 45%); }
     .xtl-composer-top, .xtl-composer-controls, .xtl-post-header, .xtl-post-actions, .xtl-roster-header, .xtl-settings-row { display: flex; align-items: center; gap: 9px; }
@@ -412,6 +414,12 @@ function setup(ctx) {
     .xtl-actor-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
     .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 2px; }
     .xtl-actor-card .xtl-button { color: #9bd7ff; border-color: color-mix(in srgb, var(--xtl-blue) 46%, #39424d); font-size: 11px; padding: 6px 9px; }
+    .xtl-management-anchor { height: 1px; scroll-margin-top: 68px; }
+    .xtl-follow-modal { display: grid; gap: 12px; min-height: 0; }
+    .xtl-follow-modal-copy { margin: 0; color: var(--lumiverse-text-muted, #8b98a5); font-size: 13px; line-height: 1.45; }
+    .xtl-follow-modal-list { display: grid; gap: 8px; min-height: 0; max-height: min(440px, calc(100vh - 250px)); overflow-y: auto; }
+    .xtl-follow-modal-empty { margin: 2px 0; color: var(--lumiverse-text-muted, #8b98a5); font-size: 13px; line-height: 1.5; text-align: center; }
+    .xtl-follow-modal .xtl-actor-card { background: var(--lumiverse-surface, #0c0f13); }
     .xtl-settings { padding: 0 14px 14px; background: #0b0e12; }
     .xtl-settings summary { cursor: pointer; color: #b8c4cf; font-size: 12px; font-weight: 700; padding: 13px 0 9px; }
     .xtl-settings-copy { color: var(--xtl-muted); font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
@@ -455,6 +463,9 @@ function setup(ctx) {
     updateNewWeavePill();
     timelineTopMarker?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const scrollToTimelineManagement = () => {
+    timelineManagementMarker?.scrollIntoView({ behavior: "auto", block: "start" });
+  };
   const trackNewActorWeaves = (state) => {
     const actorWeaveIds = new Set(state.state.posts.filter((post) => post.source === "model").map((post) => post.id));
     if (knownActorWeaveIds) {
@@ -472,11 +483,15 @@ function setup(ctx) {
     const mark = createElement("span", "xtl-header-mark", "\uD835\uDD4F");
     mark.setAttribute("aria-hidden", "true");
     const title = createElement("h2", "xtl-title", "Timeline");
+    const jumpToManagement = button("↓", "xtl-button xtl-header-jump");
+    jumpToManagement.title = "Jump to followed actors and settings";
+    jumpToManagement.setAttribute("aria-label", "Jump to followed actors and settings");
+    jumpToManagement.addEventListener("click", scrollToTimelineManagement);
     const refresh = button("↻", "xtl-button xtl-header-refresh");
     refresh.title = "Refresh timeline";
     refresh.setAttribute("aria-label", "Refresh timeline");
     refresh.addEventListener("click", () => send({ type: "load_timeline" }));
-    header.append(mark, title, refresh);
+    header.append(mark, title, jumpToManagement, refresh);
     return header;
   };
   const renderError = () => {
@@ -491,6 +506,78 @@ function setup(ctx) {
     });
     notice.append(copy, dismiss);
     return notice;
+  };
+  const renderFollowModal = () => {
+    if (!followModal || !snapshot)
+      return;
+    const modal = followModal;
+    const state = snapshot;
+    const followedActorKeys = new Set(state.state.rosterActorKeys);
+    const content = createElement("div", "xtl-follow-modal");
+    content.appendChild(createElement("p", "xtl-follow-modal-copy", followedActorKeys.size ? `${followedActorKeys.size} actor${followedActorKeys.size === 1 ? "" : "s"} followed. Follow more to add them to the randomized timeline rotation.` : "Follow actors to add them to the randomized timeline rotation."));
+    const search = document2.createElement("input");
+    search.type = "search";
+    search.className = "xtl-actor-search";
+    search.placeholder = "Search actors by name, handle, role, or definition…";
+    search.value = followModalSearch;
+    search.setAttribute("aria-label", "Search actors to follow");
+    content.appendChild(search);
+    const list = createElement("div", "xtl-follow-modal-list");
+    const renderResults = () => {
+      followModalSearch = search.value;
+      const matchingActors = state.replyActors.filter((actor) => actorMatchesSearch(actor, followModalSearch)).map((actor) => ({ actor, rank: actorSearchRank(actor, followModalSearch) })).sort((left, right) => right.rank - left.rank || left.actor.name.localeCompare(right.actor.name));
+      const visibleActors = matchingActors.slice(0, MAX_VISIBLE_ACTORS).map(({ actor }) => actor);
+      list.replaceChildren();
+      if (!visibleActors.length) {
+        const message = state.replyActors.length ? "No actors match that search." : !state.permissions.includes("characters") ? "Character-card access is not enabled. Grant the Characters permission in Extensions, then refresh." : "No character cards, Lumia DLC items, or active Council members are available yet.";
+        list.appendChild(createElement("p", "xtl-follow-modal-empty", message));
+        return;
+      }
+      for (const actor of visibleActors) {
+        const item = createElement("div", "xtl-actor-card");
+        const details = createElement("div", "xtl-actor-card-info");
+        details.append(createElement("div", "xtl-actor-card-name", actor.name), createElement("div", "xtl-actor-card-meta", `@${actor.handle} · ${actor.role ?? actor.bio}`));
+        const isFollowed = followedActorKeys.has(actor.key);
+        const follow = button(isFollowed ? "Following" : "Follow", `xtl-button${isFollowed ? " xtl-button--selected" : ""}`);
+        follow.disabled = busy;
+        follow.setAttribute("aria-pressed", String(isFollowed));
+        follow.title = isFollowed ? `Unfollow ${actor.name}` : `Follow ${actor.name}`;
+        follow.addEventListener("click", () => send({ type: "toggle_roster_actor", actorKey: actor.key }));
+        item.append(actorAvatar(actor, "small"), details, follow);
+        list.appendChild(item);
+      }
+      if (matchingActors.length > MAX_VISIBLE_ACTORS) {
+        list.appendChild(createElement("p", "xtl-follow-modal-empty", `Showing the first ${MAX_VISIBLE_ACTORS} of ${matchingActors.length}. Keep typing to narrow the list.`));
+      }
+    };
+    search.addEventListener("input", renderResults);
+    search.addEventListener("search", renderResults);
+    renderResults();
+    content.appendChild(list);
+    modal.root.replaceChildren(content);
+  };
+  const openFollowModal = () => {
+    if (!snapshot)
+      return;
+    if (followModal) {
+      renderFollowModal();
+      followModal.root.querySelector(".xtl-actor-search")?.focus();
+      return;
+    }
+    const modal = ctx.ui.showModal({ title: "Follow actors", width: 600, maxHeight: 650 });
+    const rootStyles = tab.root.ownerDocument.defaultView?.getComputedStyle(root);
+    for (const property of ["--xtl-blue", "--xtl-blue-soft", "--xtl-muted"]) {
+      const value = rootStyles?.getPropertyValue(property);
+      if (value)
+        modal.root.style.setProperty(property, value);
+    }
+    followModal = modal;
+    modal.onDismiss(() => {
+      if (followModal === modal)
+        followModal = null;
+    });
+    renderFollowModal();
+    queueMicrotask(() => modal.root.querySelector(".xtl-actor-search")?.focus());
   };
   const createActorReplyPicker = (state, options) => {
     const picker = createElement("div", "xtl-invite-picker");
@@ -1068,14 +1155,18 @@ function setup(ctx) {
   };
   const renderRoster = (state) => {
     const card = createElement("section", "xtl-card xtl-roster");
+    timelineManagementMarker = createElement("div", "xtl-management-anchor");
+    card.appendChild(timelineManagementMarker);
     const header = createElement("div", "xtl-roster-header");
-    const invited = new Set(state.state.rosterActorKeys);
     const rosterActors = state.state.rosterActorKeys.map((key) => state.replyActors.find((actor) => actor.key === key)).filter((actor) => Boolean(actor));
-    const rosterCount = createElement("span", "xtl-chip", `${rosterActors.length} invited`);
-    header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount);
+    const rosterCount = createElement("span", "xtl-chip", `${rosterActors.length} following`);
+    const followActors = button("Follow actors");
+    followActors.disabled = busy || state.replyActors.length === 0;
+    followActors.addEventListener("click", openFollowModal);
+    header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount, followActors);
     card.appendChild(header);
     const interval = `${state.state.settings.minActorWeaveIntervalMinutes}–${state.state.settings.maxActorWeaveIntervalMinutes} min`;
-    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `One invited actor takes a turn from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Invite actors to add them to the randomized timeline rotation every ${interval}.`));
+    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `Followed actors take turns from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Follow actors to add them to the randomized timeline rotation every ${interval}.`));
     const rosterList = createElement("div", "xtl-roster-list");
     if (rosterActors.length) {
       for (const actor of rosterActors) {
@@ -1091,78 +1182,22 @@ function setup(ctx) {
           render();
           send({ type: "create_actor_weave", actorKey: actor.key });
         });
-        const remove = button("Remove", "xtl-button xtl-button--quiet");
-        remove.disabled = busy;
-        remove.addEventListener("click", () => send({ type: "toggle_roster_actor", actorKey: actor.key }));
-        actions.append(weaveNow, remove);
+        const unfollow = button("Unfollow", "xtl-button xtl-button--quiet");
+        unfollow.disabled = busy;
+        unfollow.addEventListener("click", () => send({ type: "toggle_roster_actor", actorKey: actor.key }));
+        actions.append(weaveNow, unfollow);
         item.append(actorAvatar(actor, "small"), details, actions);
         rosterList.appendChild(item);
       }
     } else {
-      rosterList.appendChild(createElement("p", "xtl-roster-empty", "No one is invited to post on a schedule yet."));
+      rosterList.appendChild(createElement("p", "xtl-roster-empty", "You are not following anyone on the scheduled timeline yet."));
     }
     card.appendChild(rosterList);
-    const browserHeader = createElement("div", "xtl-roster-header xtl-roster-browser-header");
-    const resultsCount = createElement("span", "xtl-chip", `${state.replyActors.length} available`);
-    browserHeader.append(createElement("h3", "xtl-section-title", "Invite actors"), resultsCount);
-    card.appendChild(browserHeader);
-    const list = createElement("div", "xtl-roster-list");
-    let accessHint = "";
-    if (state.replyActors.length) {
-      const searchWrap = createElement("div", "xtl-actor-search-wrap");
-      const search = document2.createElement("input");
-      search.type = "search";
-      search.className = "xtl-actor-search";
-      search.placeholder = "Search actors by name, handle, role, or definition…";
-      search.value = actorSearch;
-      search.setAttribute("aria-label", "Search actors to invite");
-      searchWrap.appendChild(search);
-      card.appendChild(searchWrap);
-      const actorRows = [];
-      for (const actor of state.replyActors) {
-        const item = createElement("div", "xtl-actor-card");
-        const details = createElement("div", "xtl-actor-card-info");
-        details.append(createElement("div", "xtl-actor-card-name", actor.name), createElement("div", "xtl-actor-card-meta", `@${actor.handle} · ${actor.role ?? actor.bio}`));
-        const invite = button(invited.has(actor.key) ? "Remove" : "Invite", invited.has(actor.key) ? "xtl-button xtl-button--quiet" : "xtl-button");
-        invite.disabled = busy;
-        invite.addEventListener("click", () => {
-          send({ type: "toggle_roster_actor", actorKey: actor.key });
-        });
-        item.append(actorAvatar(actor, "small"), details, invite);
-        list.appendChild(item);
-        actorRows.push({ actor, item });
-      }
-      const noMatches = createElement("p", "xtl-roster-empty", "No actors match that search.");
-      list.appendChild(noMatches);
-      const applySearch = () => {
-        const rankedRows = actorRows.filter((row) => actorMatchesSearch(row.actor, actorSearch)).map((row) => ({ row, rank: actorSearchRank(row.actor, actorSearch) })).sort((left, right) => right.rank - left.rank || left.row.actor.name.localeCompare(right.row.actor.name));
-        const visibleRows = rankedRows.slice(0, MAX_VISIBLE_ACTORS);
-        const visibleItems = new Set(visibleRows.map(({ row }) => row.item));
-        for (const row of actorRows) {
-          row.item.hidden = !visibleItems.has(row.item);
-        }
-        for (const { row } of visibleRows)
-          list.insertBefore(row.item, noMatches);
-        noMatches.hidden = rankedRows.length > 0;
-        resultsCount.textContent = actorSearch.trim() || rankedRows.length > MAX_VISIBLE_ACTORS ? `${visibleRows.length} of ${rankedRows.length} shown` : `${rankedRows.length} available`;
-      };
-      const updateSearch = () => {
-        actorSearch = search.value;
-        applySearch();
-      };
-      search.addEventListener("input", updateSearch);
-      search.addEventListener("search", updateSearch);
-      applySearch();
-    } else {
-      const missingCharacterPermission = !state.permissions.includes("characters");
-      list.appendChild(createElement("p", "xtl-roster-empty", missingCharacterPermission ? "Character-card access is not enabled for Timeline. Grant the Characters permission in Extensions, then refresh. Lumia DLC items and active Council members can still appear here." : "No character cards, Lumia DLC items, or active Council members are available for this account yet. Add one, then refresh this timeline."));
+    if (!state.replyActors.length) {
+      card.appendChild(createElement("p", "xtl-roster-access", !state.permissions.includes("characters") ? "Character-card access is not enabled for Timeline. Grant the Characters permission in Extensions, then refresh." : "No character cards, Lumia DLC items, or active Council members are available for this account yet. Add one, then refresh this timeline."));
+    } else if (!state.permissions.includes("characters")) {
+      card.appendChild(createElement("p", "xtl-roster-access", "Character-card access is not enabled, so the follow list omits character cards."));
     }
-    if (state.replyActors.length && !state.permissions.includes("characters")) {
-      accessHint = "Character-card access is not enabled, so this list omits character cards.";
-    }
-    card.appendChild(list);
-    if (accessHint)
-      card.appendChild(createElement("p", "xtl-roster-access", accessHint));
     return card;
   };
   let settingsExpanded = false;
@@ -1201,7 +1236,7 @@ function setup(ctx) {
     details.appendChild(row);
     const intervalRow = createElement("div", "xtl-settings-row");
     const intervalLabels = createElement("div");
-    intervalLabels.append(createElement("div", "xtl-settings-label", "Roster cadence"), createElement("div", "xtl-settings-hint", "The backend chooses one invited actor at random after a delay within this range."));
+    intervalLabels.append(createElement("div", "xtl-settings-label", "Roster cadence"), createElement("div", "xtl-settings-hint", "The backend chooses one followed actor at random after a delay within this range."));
     const intervalInputs = createElement("div", "xtl-interval-inputs");
     const minimum = document2.createElement("input");
     minimum.type = "number";
@@ -1367,11 +1402,11 @@ function setup(ctx) {
     addSliderRow("Frequency Penalty", "How much to penalize new tokens based on their existing frequency in the text so far.", 0, 2, 0.05, state.state.settings.frequencyPenalty ?? 0, "frequencyPenalty");
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
-    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, threads, and roster invitations. Your persona, sidecar, and cadence settings stay saved."));
+    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes all weaves, reactions, and threads. Followed actors, their schedule, and your saved settings stay in place."));
     const reset = button("Reset timeline", "xtl-button xtl-button--danger");
     reset.disabled = busy;
     reset.addEventListener("click", () => {
-      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All weaves, reactions, threads, and roster invitations will be deleted.");
+      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All weaves, reactions, and threads will be deleted. Followed actors and settings will stay in place.");
       if (!confirmed)
         return;
       draft = "";
@@ -1408,6 +1443,7 @@ function setup(ctx) {
     disposeReactionTooltip?.();
     disposeReactionTooltip = null;
     timelineTopMarker = null;
+    timelineManagementMarker = null;
     newWeavePill = null;
     personaPicker?.destroy();
     personaPicker = null;
@@ -1440,6 +1476,7 @@ function setup(ctx) {
       if (inviteActorKey && !snapshot.replyActors.some((actor) => actor.key === inviteActorKey))
         inviteActorKey = "";
       render();
+      renderFollowModal();
       return;
     }
     if (message.type === "timeline_error") {
@@ -1457,12 +1494,14 @@ function setup(ctx) {
       busy = false;
       busyActorName = null;
       render();
+      renderFollowModal();
       return;
     }
     if (message.type === "timeline_activity") {
       busy = Boolean(message.active);
       busyActorName = message.actorName ?? null;
       render();
+      renderFollowModal();
       return;
     }
   });
@@ -1496,6 +1535,8 @@ function setup(ctx) {
     disposeActorPickerPortal = null;
     disposeReactionTooltip?.();
     disposeReactionTooltip = null;
+    followModal?.dismiss();
+    followModal = null;
     document2.removeEventListener("scroll", onScroll, true);
     personaPicker?.destroy();
     personaPicker = null;

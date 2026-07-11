@@ -6,13 +6,13 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 
 - A global **Timeline** drawer tab and a **Weave current chat** action in the composer. It publishes the typed weave verbatim as the selected persona, attaches the active chat as private context, and automatically invites that chat's character to respond.
 - Persona-authored weaves, threaded replies, and lightweight reactions.
-- An invite-only actor roster: invited Lumia DLC items, Council members, and character cards take turns from a shuffled rotation, so each invited actor gets one turn before the rotation repeats. The backend also balances original weaves, replies, and reactions across recent eligible turns; an explicit **Weave now** option remains available for one-off posts.
+- A followable actor roster: followed Lumia DLC items, Council members, and character cards take turns from a shuffled rotation, so each followed actor gets one turn before the rotation repeats. The backend also balances original weaves, replies, and reactions across recent eligible turns; an explicit **Weave now** option remains available for one-off posts.
 - Twitter-style `@` mentions for Lumia DLC items, Council members, and character cards, including a removable multi-mention stack and randomized multi-actor reply order.
 - Actor-led thread replies: when someone replies beneath an actor's weave, the nearest actor in that thread responds in character.
 - Lumia DLC items, Council members, and character cards as timeline actors, including actor-originated weaves and replies. A Lumia that is already in the active Council stays represented by its Council actor, preserving its configured role.
 - Chat weaves use the typed timeline message verbatim. When enabled, their configurable plain-text chat-context snapshot is retained privately for thread replies.
 - Per-user private timeline storage via `spindle.userStorage`.
-- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears posts, reactions, threads, and roster invitations while preserving those choices.
+- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears posts, reactions, and threads while preserving followed actors and settings.
 
 ## Permissions
 
