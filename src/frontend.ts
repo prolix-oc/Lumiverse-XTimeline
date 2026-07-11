@@ -579,7 +579,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-actor-search { display: block; width: 100%; box-sizing: border-box; border: 1px solid #3a4148; border-radius: 999px; background: #0a0d11; color: #f4f7fa; padding: 9px 13px; font: inherit; font-size: 12px; outline: none; }
     .xtl-actor-search::placeholder { color: #75808c; }
     .xtl-actor-search:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); }
-    .xtl-roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 12px; }
+    .xtl-roster-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 10px; margin-top: 12px; }
     .xtl-roster-empty, .xtl-roster-access { grid-column: 1 / -1; margin: 2px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.5; }
     .xtl-actor-card[hidden], .xtl-roster-empty[hidden] { display: none !important; }
     .xtl-roster-access { margin-top: 10px; }
@@ -589,6 +589,9 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-actor-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
     .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 2px; }
     .xtl-actor-card .xtl-button { color: #9bd7ff; border-color: color-mix(in srgb, var(--xtl-blue) 46%, #39424d); font-size: 11px; padding: 6px 9px; }
+    .xtl-roster-actor-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 11px; }
+    .xtl-roster-actor-card .xtl-actor-card-actions { display: grid; grid-column: 1 / -1; grid-template-columns: 1.25fr 1fr 1fr; width: 100%; gap: 6px; margin-left: 0; }
+    .xtl-roster-actor-card .xtl-button { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .xtl-management-anchor { height: 1px; scroll-margin-top: 68px; }
     .xtl-follow-modal { display: grid; gap: 12px; min-height: 0; }
     .xtl-follow-modal-copy { margin: 0; color: var(--lumiverse-text-muted, #8b98a5); font-size: 13px; line-height: 1.45; }
@@ -1906,7 +1909,7 @@ export function setup(ctx: SpindleFrontendContext) {
     const rosterList = createElement('div', 'xtl-roster-list')
     if (rosterActors.length) {
       for (const actor of rosterActors) {
-        const item = createElement('div', 'xtl-actor-card')
+        const item = createElement('div', 'xtl-actor-card xtl-roster-actor-card')
         const details = createElement('div', 'xtl-actor-card-info')
         details.append(
           createElement('div', 'xtl-actor-card-name', actor.name),
