@@ -62,6 +62,7 @@ export interface TimelineSettings {
   maxActorWeaveIntervalMinutes: number
   gifChance?: number
   highQualityGifs?: boolean
+  encourageNsfw?: boolean
   includeChatContext: boolean
   chatContextMessageCount: number
   maxTokens: number
@@ -115,6 +116,7 @@ export function createEmptyTimelineState(): TimelineState {
       maxActorWeaveIntervalMinutes: 120,
       gifChance: 35,
       highQualityGifs: false,
+      encourageNsfw: false,
       includeChatContext: true,
       chatContextMessageCount: DEFAULT_CHAT_CONTEXT_MESSAGES,
       maxTokens: DEFAULT_GENERATION_MAX_TOKENS,

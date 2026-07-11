@@ -1455,6 +1455,25 @@ export function setup(ctx: SpindleFrontendContext) {
     hqGifRow.append(hqGifLabels, hqGifInput)
     details.appendChild(hqGifRow)
 
+    const nsfwRow = createElement('div', 'xtl-settings-row')
+    const nsfwLabels = createElement('div')
+    nsfwLabels.append(
+      createElement('div', 'xtl-settings-label', 'Encourage NSFW Engagement'),
+      createElement('div', 'xtl-settings-hint', 'Encourage the timeline actors to use NSFW, provocative, or explicit language and topics when fitting their character.'),
+    )
+    const nsfwInput = document.createElement('input')
+    nsfwInput.type = 'checkbox'
+    nsfwInput.checked = Boolean(state.state.settings.encourageNsfw)
+    nsfwInput.disabled = busy
+    nsfwInput.addEventListener('change', () => {
+      send({
+        type: 'update_settings',
+        encourageNsfw: nsfwInput.checked,
+      })
+    })
+    nsfwRow.append(nsfwLabels, nsfwInput)
+    details.appendChild(nsfwRow)
+
     const chatContextRow = createElement('div', 'xtl-settings-row')
     const chatContextLabels = createElement('div')
     chatContextLabels.append(
