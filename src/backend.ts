@@ -517,6 +517,7 @@ function normalizeState(value: unknown): TimelineState {
     settings: {
       selectedPersonaId: typeof settings.selectedPersonaId === 'string' ? settings.selectedPersonaId : null,
       sidecarConnectionId: typeof settings.sidecarConnectionId === 'string' ? settings.sidecarConnectionId : null,
+      feedSort: settings.feedSort === 'activity' ? 'activity' : 'newest',
       minActorWeaveIntervalMinutes,
       maxActorWeaveIntervalMinutes,
       gifChance: typeof settings.gifChance === 'number' ? settings.gifChance : fallback.settings.gifChance,
@@ -1342,6 +1343,10 @@ async function updateSettings(payload: UnknownRecord, userId: string): Promise<v
       && directory.connections.some((connection) => connection.id === requestedConnectionId)
       ? requestedConnectionId
       : null
+  }
+
+  if (payload.feedSort === 'newest' || payload.feedSort === 'activity') {
+    state.settings.feedSort = payload.feedSort
   }
 
   const hasMinInterval = typeof payload.minActorWeaveIntervalMinutes === 'number'

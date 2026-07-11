@@ -11,6 +11,7 @@ export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
 export type TimelineActorKind = 'persona' | 'character' | 'council' | 'lumia'
 export type TimelineRosterAction = 'weave' | 'reply' | 'react'
+export type TimelineFeedSort = 'newest' | 'activity'
 
 export interface TimelineActor {
   key: string
@@ -58,6 +59,7 @@ export interface TimelinePost {
 export interface TimelineSettings {
   selectedPersonaId: string | null
   sidecarConnectionId: string | null
+  feedSort: TimelineFeedSort
   minActorWeaveIntervalMinutes: number
   maxActorWeaveIntervalMinutes: number
   gifChance?: number
@@ -112,6 +114,7 @@ export function createEmptyTimelineState(): TimelineState {
     settings: {
       selectedPersonaId: null,
       sidecarConnectionId: null,
+      feedSort: 'newest',
       minActorWeaveIntervalMinutes: 30,
       maxActorWeaveIntervalMinutes: 120,
       gifChance: 35,

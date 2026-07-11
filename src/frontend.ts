@@ -232,7 +232,7 @@ function actorAvatar(actor: Pick<TimelineActor, 'name' | 'avatarUrl'>, size = 'n
   return holder
 }
 
-function orderedPosts(posts: TimelinePost[]): Array<{ post: TimelinePost; depth: number }> {
+function orderedPosts(posts: TimelinePost[], sortBy: 'newest' | 'activity'): Array<{ post: TimelinePost; depth: number }> {
   const byParent = new Map<string, TimelinePost[]>()
   const roots: TimelinePost[] = []
   const ids = new Set(posts.map((post) => post.id))
@@ -247,8 +247,24 @@ function orderedPosts(posts: TimelinePost[]): Array<{ post: TimelinePost; depth:
     byParent.set(post.replyToId, replies)
   }
 
-  roots.sort((left, right) => right.createdAt - left.createdAt)
   for (const replies of byParent.values()) replies.sort((left, right) => left.createdAt - right.createdAt)
+
+  const threadActivity = new Map<string, number>()
+  const latestActivityAt = (post: TimelinePost): number => {
+    const cached = threadActivity.get(post.id)
+    if (cached !== undefined) return cached
+    const latest = (byParent.get(post.id) ?? []).reduce(
+      (currentLatest, reply) => Math.max(currentLatest, latestActivityAt(reply)),
+      post.createdAt,
+    )
+    threadActivity.set(post.id, latest)
+    return latest
+  }
+  roots.sort((left, right) => {
+    const leftTime = sortBy === 'activity' ? latestActivityAt(left) : left.createdAt
+    const rightTime = sortBy === 'activity' ? latestActivityAt(right) : right.createdAt
+    return rightTime - leftTime || right.createdAt - left.createdAt
+  })
 
   const result: Array<{ post: TimelinePost; depth: number }> = []
   const visit = (post: TimelinePost, depth: number) => {
@@ -451,6 +467,9 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-reaction-tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fa; font-size: 12px; font-weight: 750; }
     .xtl-reaction-tooltip-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 10px; margin-top: 1px; }
     .xtl-feed-top { scroll-margin-top: 68px; height: 1px; }
+    .xtl-feed-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--xtl-line); }
+    .xtl-feed-sort-label { color: var(--xtl-muted); font-size: 12px; font-weight: 700; }
+    .xtl-feed-toolbar .xtl-select { max-width: none; }
     .xtl-new-weaves-wrap { position: sticky; top: 66px; z-index: 3; display: flex; justify-content: center; width: 100%; height: 1px; pointer-events: none; }
     .xtl-new-weaves { pointer-events: auto; min-height: 32px; box-sizing: border-box; border: 1px solid #68c0ff; background: linear-gradient(180deg, #2aa7f5, #168bd6); box-shadow: 0 7px 19px rgb(0 0 0 / 34%); color: #fff; margin-top: 9px; padding: 8px 14px; font-size: 12px; font-weight: 800; line-height: 1; letter-spacing: .01em; white-space: nowrap; }
     .xtl-new-weaves:hover:not(:disabled) { border-color: #b6e3ff; background: linear-gradient(180deg, #44b4fa, #1a95e5); color: #fff; }
@@ -1303,7 +1322,27 @@ export function setup(ctx: SpindleFrontendContext) {
       feed.appendChild(wrap)
       updateNewWeavePill()
     }
-    const posts = orderedPosts(state.state.posts)
+    const toolbar = createElement('div', 'xtl-feed-toolbar')
+    const sortLabel = createElement('label', 'xtl-feed-sort-label', 'Sort timeline')
+    const sort = document.createElement('select')
+    sort.className = 'xtl-select'
+    sort.setAttribute('aria-label', 'Timeline sort order')
+    sort.id = 'xtl-feed-sort'
+    sortLabel.htmlFor = sort.id
+    const newest = document.createElement('option')
+    newest.value = 'newest'
+    newest.textContent = 'Newest weaves'
+    const activity = document.createElement('option')
+    activity.value = 'activity'
+    activity.textContent = 'Recent activity'
+    sort.append(newest, activity)
+    sort.value = state.state.settings.feedSort
+    sort.disabled = busy
+    sort.addEventListener('change', () => send({ type: 'update_settings', feedSort: sort.value }))
+    toolbar.append(sortLabel, sort)
+    feed.appendChild(toolbar)
+
+    const posts = orderedPosts(state.state.posts, state.state.settings.feedSort)
     if (!posts.length) {
       feed.appendChild(createElement('div', 'xtl-empty', 'No weaves yet. Start the feed with a thought from your selected persona, or let a Lumia, Council member, or character card post first.'))
       return feed

@@ -21,6 +21,7 @@ function createEmptyTimelineState() {
     settings: {
       selectedPersonaId: null,
       sidecarConnectionId: null,
+      feedSort: "newest",
       minActorWeaveIntervalMinutes: 30,
       maxActorWeaveIntervalMinutes: 120,
       gifChance: 35,
@@ -439,6 +440,7 @@ function normalizeState(value) {
     settings: {
       selectedPersonaId: typeof settings.selectedPersonaId === "string" ? settings.selectedPersonaId : null,
       sidecarConnectionId: typeof settings.sidecarConnectionId === "string" ? settings.sidecarConnectionId : null,
+      feedSort: settings.feedSort === "activity" ? "activity" : "newest",
       minActorWeaveIntervalMinutes,
       maxActorWeaveIntervalMinutes,
       gifChance: typeof settings.gifChance === "number" ? settings.gifChance : fallback.settings.gifChance,
@@ -1128,6 +1130,9 @@ async function updateSettings(payload, userId) {
   const requestedConnectionId = payload.sidecarConnectionId;
   if (requestedConnectionId === null || typeof requestedConnectionId === "string") {
     state.settings.sidecarConnectionId = typeof requestedConnectionId === "string" && directory.connections.some((connection) => connection.id === requestedConnectionId) ? requestedConnectionId : null;
+  }
+  if (payload.feedSort === "newest" || payload.feedSort === "activity") {
+    state.settings.feedSort = payload.feedSort;
   }
   const hasMinInterval = typeof payload.minActorWeaveIntervalMinutes === "number" || typeof payload.minActorWeaveIntervalMinutes === "string";
   const hasMaxInterval = typeof payload.maxActorWeaveIntervalMinutes === "number" || typeof payload.maxActorWeaveIntervalMinutes === "string";
