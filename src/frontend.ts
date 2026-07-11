@@ -520,8 +520,13 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-dm-message-row .xtl-avatar { width: 29px; height: 29px; border-width: 1px; font-size: 9px; }
     .xtl-dm-bubble { min-width: 0; border-radius: 18px 18px 18px 5px; background: #27313b; color: #f5f8fa; overflow: hidden; }
     .xtl-dm-message-row--outgoing .xtl-dm-bubble { border-radius: 18px 18px 5px 18px; background: var(--xtl-blue); }
+    .xtl-dm-bubble--media { width: min(100%, 340px); }
     .xtl-dm-bubble-copy { padding: 9px 11px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.38; }
-    .xtl-dm-gif { display: block; width: min(100%, 350px); max-height: 310px; object-fit: cover; background: #0a0d11; }
+    .xtl-dm-media { display: flex; align-items: center; justify-content: center; max-height: 260px; overflow: hidden; background: #0a0d11; border-radius: 0 0 18px 5px; }
+    .xtl-dm-message-row--outgoing .xtl-dm-media { border-radius: 0 0 5px 18px; }
+    .xtl-dm-bubble--media-only .xtl-dm-media { border-radius: 18px 18px 18px 5px; }
+    .xtl-dm-message-row--outgoing .xtl-dm-bubble--media-only .xtl-dm-media { border-radius: 18px 18px 5px 18px; }
+    .xtl-dm-gif { display: block; width: auto; max-width: 100%; height: auto; max-height: 260px; object-fit: contain; }
     .xtl-dm-time { color: var(--xtl-muted); margin: 2px 4px 0; font-size: 10px; }
     .xtl-dm-message-row--outgoing .xtl-dm-time { text-align: right; }
     .xtl-dm-composer { flex: 0 0 auto; padding: 10px 12px 12px; border-top: 1px solid var(--xtl-line); background: #0b0e12; }
@@ -1568,6 +1573,8 @@ export function setup(ctx: SpindleFrontendContext) {
     const outgoing = message.direction === 'outgoing'
     const row = createElement('div', `xtl-dm-message-row${outgoing ? ' xtl-dm-message-row--outgoing' : ''}`)
     const bubble = createElement('div', 'xtl-dm-bubble')
+    if (message.gifUrl) bubble.classList.add('xtl-dm-bubble--media')
+    if (message.gifUrl && !message.content) bubble.classList.add('xtl-dm-bubble--media-only')
     if (message.content) {
       bubble.appendChild(createElement('div', 'xtl-dm-bubble-copy', message.content))
     } else if (options.pendingGifQuery) {
@@ -1578,7 +1585,9 @@ export function setup(ctx: SpindleFrontendContext) {
       image.className = 'xtl-dm-gif'
       image.src = gifDisplayUrl(message.gifUrl, Boolean(state.state.settings.highQualityGifs))
       image.alt = message.content ? '' : 'GIF attachment'
-      bubble.appendChild(image)
+      const media = createElement('div', 'xtl-dm-media')
+      media.appendChild(image)
+      bubble.appendChild(media)
     }
     const time = createElement('div', 'xtl-dm-time', relativeTime(message.createdAt))
     const stack = createElement('div')
