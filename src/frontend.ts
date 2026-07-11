@@ -273,6 +273,11 @@ export function setup(ctx: SpindleFrontendContext) {
   let disposeMentionPortal: (() => void) | null = null
   let disposeActorPickerPortal: (() => void) | null = null
   let disposeReactionTooltip: (() => void) | null = null
+  let timelineTopMarker: HTMLElement | null = null
+  let newWeavePill: HTMLButtonElement | null = null
+  let knownActorWeaveIds: Set<string> | null = null
+  let newActorWeaveCount = 0
+  let timelineIsPastTop = false
 
   const tab = ctx.ui.registerDrawerTab({
     id: 'timeline',
@@ -381,6 +386,10 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-reaction-tooltip-copy { min-width: 0; }
     .xtl-reaction-tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fa; font-size: 12px; font-weight: 750; }
     .xtl-reaction-tooltip-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 10px; margin-top: 1px; }
+    .xtl-feed-top { scroll-margin-top: 68px; height: 1px; }
+    .xtl-new-weaves-wrap { position: sticky; top: 67px; z-index: 3; display: flex; justify-content: center; height: 0; pointer-events: none; }
+    .xtl-new-weaves { pointer-events: auto; border-color: color-mix(in srgb, var(--xtl-blue) 74%, #3a4148); background: var(--xtl-blue); box-shadow: 0 7px 19px rgb(0 0 0 / 30%); color: #fff; margin-top: 9px; padding: 8px 13px; }
+    .xtl-new-weaves:hover:not(:disabled) { border-color: #70c7ff; background: #1488d4; color: #fff; }
     .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
@@ -426,6 +435,39 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   const send = (payload: UnknownRecord) => ctx.sendToBackend(payload)
+
+  const updateNewWeavePill = () => {
+    if (!newWeavePill) return
+    const visible = timelineIsPastTop && newActorWeaveCount > 0
+    newWeavePill.hidden = !visible
+    newWeavePill.textContent = `${newActorWeaveCount} new ${newActorWeaveCount === 1 ? 'weave' : 'weaves'}`
+  }
+
+  const updateTimelineScrollState = () => {
+    const wasPastTop = timelineIsPastTop
+    timelineIsPastTop = Boolean(timelineTopMarker?.isConnected && timelineTopMarker.getBoundingClientRect().top < 0)
+    if (wasPastTop && !timelineIsPastTop && newActorWeaveCount) newActorWeaveCount = 0
+    updateNewWeavePill()
+  }
+
+  const scrollToTimelineTop = () => {
+    newActorWeaveCount = 0
+    updateNewWeavePill()
+    timelineTopMarker?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const trackNewActorWeaves = (state: TimelineSnapshot) => {
+    const actorWeaveIds = new Set(
+      state.state.posts
+        .filter((post) => post.source === 'model')
+        .map((post) => post.id),
+    )
+    if (knownActorWeaveIds) {
+      const arrived = [...actorWeaveIds].filter((id) => !knownActorWeaveIds?.has(id)).length
+      if (arrived && timelineIsPastTop) newActorWeaveCount += arrived
+    }
+    knownActorWeaveIds = actorWeaveIds
+  }
 
   const focusComposer = () => {
     queueMicrotask(() => root.querySelector<HTMLTextAreaElement>('.xtl-textarea')?.focus())
@@ -1069,6 +1111,16 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const renderTimeline = (state: TimelineSnapshot) => {
     const feed = createElement('section', 'xtl-card')
+    timelineTopMarker = createElement('div', 'xtl-feed-top')
+    feed.appendChild(timelineTopMarker)
+    if (timelineIsPastTop && newActorWeaveCount) {
+      const wrap = createElement('div', 'xtl-new-weaves-wrap')
+      newWeavePill = button('', 'xtl-button xtl-new-weaves')
+      newWeavePill.addEventListener('click', scrollToTimelineTop)
+      wrap.appendChild(newWeavePill)
+      feed.appendChild(wrap)
+      updateNewWeavePill()
+    }
     const posts = orderedPosts(state.state.posts)
     if (!posts.length) {
       feed.appendChild(createElement('div', 'xtl-empty', 'No weaves yet. Start the feed with a thought from your selected persona, or let a Council member or character card post first.'))
@@ -1460,6 +1512,8 @@ export function setup(ctx: SpindleFrontendContext) {
     disposeActorPickerPortal = null
     disposeReactionTooltip?.()
     disposeReactionTooltip = null
+    timelineTopMarker = null
+    newWeavePill = null
     personaPicker?.destroy()
     personaPicker = null
     sliderHandles.forEach(h => h.destroy())
@@ -1478,6 +1532,7 @@ export function setup(ctx: SpindleFrontendContext) {
     }
 
     root.append(renderComposer(snapshot), renderTimeline(snapshot), renderRoster(snapshot), renderSettings(snapshot))
+    updateTimelineScrollState()
   }
 
   const unsubscribeMessages = ctx.onBackendMessage((payload) => {
@@ -1485,6 +1540,8 @@ export function setup(ctx: SpindleFrontendContext) {
     if (!message) return
 
     if (message.type === 'timeline_state' && isSnapshot(message.snapshot)) {
+      updateTimelineScrollState()
+      trackNewActorWeaves(message.snapshot)
       snapshot = message.snapshot
       if (pendingDraft) pendingDraft = null
       if (inviteActorKey && !snapshot.replyActors.some((actor) => actor.key === inviteActorKey)) inviteActorKey = ''
@@ -1527,6 +1584,18 @@ export function setup(ctx: SpindleFrontendContext) {
     focusComposer()
   })
   const unsubscribeActivate = tab.onActivate(() => send({ type: 'load_timeline' }))
+  const document = tab.root.ownerDocument
+  const onScroll = (event: Event) => {
+    const target = event.target
+    if (
+      target === document
+      || target === document.documentElement
+      || target === document.body
+      || target === tab.root
+      || (target instanceof Node && target.contains(root))
+    ) updateTimelineScrollState()
+  }
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true })
 
   render()
   send({ type: 'load_timeline' })
@@ -1539,6 +1608,7 @@ export function setup(ctx: SpindleFrontendContext) {
     disposeActorPickerPortal = null
     disposeReactionTooltip?.()
     disposeReactionTooltip = null
+    document.removeEventListener('scroll', onScroll, true)
     personaPicker?.destroy()
     personaPicker = null
     sliderHandles.forEach(h => h.destroy())

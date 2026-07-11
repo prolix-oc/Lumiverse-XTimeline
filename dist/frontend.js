@@ -217,6 +217,11 @@ function setup(ctx) {
   let disposeMentionPortal = null;
   let disposeActorPickerPortal = null;
   let disposeReactionTooltip = null;
+  let timelineTopMarker = null;
+  let newWeavePill = null;
+  let knownActorWeaveIds = null;
+  let newActorWeaveCount = 0;
+  let timelineIsPastTop = false;
   const tab = ctx.ui.registerDrawerTab({
     id: "timeline",
     title: "Lumiverse Timeline",
@@ -323,6 +328,10 @@ function setup(ctx) {
     .xtl-reaction-tooltip-copy { min-width: 0; }
     .xtl-reaction-tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fa; font-size: 12px; font-weight: 750; }
     .xtl-reaction-tooltip-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 10px; margin-top: 1px; }
+    .xtl-feed-top { scroll-margin-top: 68px; height: 1px; }
+    .xtl-new-weaves-wrap { position: sticky; top: 67px; z-index: 3; display: flex; justify-content: center; height: 0; pointer-events: none; }
+    .xtl-new-weaves { pointer-events: auto; border-color: color-mix(in srgb, var(--xtl-blue) 74%, #3a4148); background: var(--xtl-blue); box-shadow: 0 7px 19px rgb(0 0 0 / 30%); color: #fff; margin-top: 9px; padding: 8px 13px; }
+    .xtl-new-weaves:hover:not(:disabled) { border-color: #70c7ff; background: #1488d4; color: #fff; }
     .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
     .xtl-roster-header { justify-content: space-between; }
@@ -367,6 +376,34 @@ function setup(ctx) {
     return snapshot.state.posts.find((post) => post.id === replyToId) ?? null;
   };
   const send = (payload) => ctx.sendToBackend(payload);
+  const updateNewWeavePill = () => {
+    if (!newWeavePill)
+      return;
+    const visible = timelineIsPastTop && newActorWeaveCount > 0;
+    newWeavePill.hidden = !visible;
+    newWeavePill.textContent = `${newActorWeaveCount} new ${newActorWeaveCount === 1 ? "weave" : "weaves"}`;
+  };
+  const updateTimelineScrollState = () => {
+    const wasPastTop = timelineIsPastTop;
+    timelineIsPastTop = Boolean(timelineTopMarker?.isConnected && timelineTopMarker.getBoundingClientRect().top < 0);
+    if (wasPastTop && !timelineIsPastTop && newActorWeaveCount)
+      newActorWeaveCount = 0;
+    updateNewWeavePill();
+  };
+  const scrollToTimelineTop = () => {
+    newActorWeaveCount = 0;
+    updateNewWeavePill();
+    timelineTopMarker?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const trackNewActorWeaves = (state) => {
+    const actorWeaveIds = new Set(state.state.posts.filter((post) => post.source === "model").map((post) => post.id));
+    if (knownActorWeaveIds) {
+      const arrived = [...actorWeaveIds].filter((id) => !knownActorWeaveIds?.has(id)).length;
+      if (arrived && timelineIsPastTop)
+        newActorWeaveCount += arrived;
+    }
+    knownActorWeaveIds = actorWeaveIds;
+  };
   const focusComposer = () => {
     queueMicrotask(() => root.querySelector(".xtl-textarea")?.focus());
   };
@@ -417,7 +454,7 @@ function setup(ctx) {
       const popover = createElement("div", "xtl-actor-picker-popover");
       popover.setAttribute("role", "dialog");
       popover.setAttribute("aria-label", "Invite an actor to reply");
-      const search = document.createElement("input");
+      const search = document2.createElement("input");
       search.type = "search";
       search.className = "xtl-actor-picker-search";
       search.placeholder = "Search actors…";
@@ -612,7 +649,7 @@ function setup(ctx) {
     const replyThreadOwner = replyTarget ? actorWhoOwnsThread(replyTarget, state) : null;
     if (replyTarget) {
       const context = createElement("p", "xtl-compose-context");
-      context.append("Replying to ", createElement("strong", undefined, `@${replyTarget.author.handle}`), document.createTextNode(". "));
+      context.append("Replying to ", createElement("strong", undefined, `@${replyTarget.author.handle}`), document2.createTextNode(". "));
       if (replyThreadOwner) {
         context.append(createElement("span", "xtl-chip", `@${replyThreadOwner.handle} will respond`));
       }
@@ -638,7 +675,7 @@ function setup(ctx) {
       context.appendChild(clear);
       card.appendChild(context);
     }
-    const textarea = document.createElement("textarea");
+    const textarea = document2.createElement("textarea");
     textarea.className = "xtl-textarea";
     textarea.maxLength = MAX_WEAVE_LENGTH;
     textarea.placeholder = replyTarget ? `Reply to @${replyTarget.author.handle}…` : "What is happening in your Lumiverse?";
@@ -783,7 +820,7 @@ function setup(ctx) {
         return;
       }
       mentionMatches.forEach((actor, index) => {
-        const option = document.createElement("button");
+        const option = document2.createElement("button");
         option.type = "button";
         option.className = `xtl-mention-option${index === activeMentionIndex ? " xtl-mention-option--active" : ""}`;
         option.setAttribute("role", "option");
@@ -889,7 +926,7 @@ function setup(ctx) {
     article.appendChild(header);
     article.appendChild(createElement("div", "xtl-post-body", post.content));
     if (post.gifUrl) {
-      const img = document.createElement("img");
+      const img = document2.createElement("img");
       const hq = Boolean(state.state.settings.highQualityGifs);
       img.src = hq ? post.gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAC/") : post.gifUrl.replace(/AAAA[A-Za-z]\//, "AAAAM/");
       img.className = "xtl-post-gif";
@@ -948,6 +985,16 @@ function setup(ctx) {
   };
   const renderTimeline = (state) => {
     const feed = createElement("section", "xtl-card");
+    timelineTopMarker = createElement("div", "xtl-feed-top");
+    feed.appendChild(timelineTopMarker);
+    if (timelineIsPastTop && newActorWeaveCount) {
+      const wrap = createElement("div", "xtl-new-weaves-wrap");
+      newWeavePill = button("", "xtl-button xtl-new-weaves");
+      newWeavePill.addEventListener("click", scrollToTimelineTop);
+      wrap.appendChild(newWeavePill);
+      feed.appendChild(wrap);
+      updateNewWeavePill();
+    }
     const posts = orderedPosts(state.state.posts);
     if (!posts.length) {
       feed.appendChild(createElement("div", "xtl-empty", "No weaves yet. Start the feed with a thought from your selected persona, or let a Council member or character card post first."));
@@ -1001,7 +1048,7 @@ function setup(ctx) {
     let accessHint = "";
     if (state.replyActors.length) {
       const searchWrap = createElement("div", "xtl-actor-search-wrap");
-      const search = document.createElement("input");
+      const search = document2.createElement("input");
       search.type = "search";
       search.className = "xtl-actor-search";
       search.placeholder = "Search actors by name, handle, role, or card…";
@@ -1059,7 +1106,7 @@ function setup(ctx) {
   let settingsExpanded = false;
   const renderSettings = (state) => {
     const card = createElement("section", "xtl-card xtl-settings");
-    const details = document.createElement("details");
+    const details = document2.createElement("details");
     details.open = settingsExpanded;
     details.addEventListener("toggle", () => {
       settingsExpanded = details.open;
@@ -1071,15 +1118,15 @@ function setup(ctx) {
     const row = createElement("div", "xtl-settings-row");
     const labels = createElement("div");
     labels.append(createElement("div", "xtl-settings-label", "Timeline sidecar"), createElement("div", "xtl-settings-hint", "Used only for actor weaves, replies, and optional chat summaries."));
-    const connectionSelect = document.createElement("select");
+    const connectionSelect = document2.createElement("select");
     connectionSelect.className = "xtl-select";
     connectionSelect.setAttribute("aria-label", "Timeline sidecar connection");
-    const unset = document.createElement("option");
+    const unset = document2.createElement("option");
     unset.value = "";
     unset.textContent = "Choose connection…";
     connectionSelect.appendChild(unset);
     for (const connection of state.connections) {
-      const option = document.createElement("option");
+      const option = document2.createElement("option");
       option.value = connection.id;
       option.textContent = `${connection.name} · ${connection.model || connection.provider}${connection.hasApiKey ? "" : " (no key)"}`;
       option.disabled = !connection.hasApiKey;
@@ -1094,7 +1141,7 @@ function setup(ctx) {
     const intervalLabels = createElement("div");
     intervalLabels.append(createElement("div", "xtl-settings-label", "Roster cadence"), createElement("div", "xtl-settings-hint", "The backend chooses one invited actor at random after a delay within this range."));
     const intervalInputs = createElement("div", "xtl-interval-inputs");
-    const minimum = document.createElement("input");
+    const minimum = document2.createElement("input");
     minimum.type = "number";
     minimum.className = "xtl-number-input";
     minimum.min = "1";
@@ -1102,7 +1149,7 @@ function setup(ctx) {
     minimum.step = "1";
     minimum.value = String(state.state.settings.minActorWeaveIntervalMinutes);
     minimum.setAttribute("aria-label", "Minimum roster weave interval in minutes");
-    const maximum = document.createElement("input");
+    const maximum = document2.createElement("input");
     maximum.type = "number";
     maximum.className = "xtl-number-input";
     maximum.min = "1";
@@ -1125,7 +1172,7 @@ function setup(ctx) {
     };
     minimum.addEventListener("change", () => saveIntervals("minimum"));
     maximum.addEventListener("change", () => saveIntervals("maximum"));
-    intervalInputs.append(minimum, document.createTextNode("to"), maximum, document.createTextNode("min"));
+    intervalInputs.append(minimum, document2.createTextNode("to"), maximum, document2.createTextNode("min"));
     intervalRow.append(intervalLabels, intervalInputs);
     details.appendChild(intervalRow);
     const gifChanceRow = createElement("div", "xtl-settings-row");
@@ -1146,13 +1193,13 @@ function setup(ctx) {
         gifChance: val
       });
     });
-    gifChanceInputWrap.append(gifChanceInput, document.createTextNode("%"));
+    gifChanceInputWrap.append(gifChanceInput, document2.createTextNode("%"));
     gifChanceRow.append(gifChanceLabels, gifChanceInputWrap);
     details.appendChild(gifChanceRow);
     const hqGifRow = createElement("div", "xtl-settings-row");
     const hqGifLabels = createElement("div");
     hqGifLabels.append(createElement("div", "xtl-settings-label", "High Quality GIFs"), createElement("div", "xtl-settings-hint", "Download uncompressed media. Uses more data and slows down loading, but removes blurriness."));
-    const hqGifInput = document.createElement("input");
+    const hqGifInput = document2.createElement("input");
     hqGifInput.type = "checkbox";
     hqGifInput.checked = Boolean(state.state.settings.highQualityGifs);
     hqGifInput.disabled = busy;
@@ -1168,12 +1215,12 @@ function setup(ctx) {
     const chatContextLabels = createElement("div");
     chatContextLabels.append(createElement("div", "xtl-settings-label", "Chat reply context"), createElement("div", "xtl-settings-hint", "Each chat weave saves a private snapshot for the active character to discuss or gossip about. The inserted message uses the same message count."));
     const chatContextControls = createElement("div", "xtl-interval-inputs");
-    const includeChatContext = document.createElement("input");
+    const includeChatContext = document2.createElement("input");
     includeChatContext.type = "checkbox";
     includeChatContext.checked = state.state.settings.includeChatContext;
     includeChatContext.disabled = busy;
     includeChatContext.setAttribute("aria-label", "Include chat context in actor replies");
-    const chatContextCount = document.createElement("input");
+    const chatContextCount = document2.createElement("input");
     chatContextCount.type = "number";
     chatContextCount.className = "xtl-number-input";
     chatContextCount.min = "1";
@@ -1191,7 +1238,7 @@ function setup(ctx) {
       chatContextCount.value = String(count);
       send({ type: "update_settings", chatContextMessageCount: count });
     });
-    chatContextControls.append(includeChatContext, chatContextCount, document.createTextNode("recent messages"));
+    chatContextControls.append(includeChatContext, chatContextCount, document2.createTextNode("recent messages"));
     chatContextRow.append(chatContextLabels, chatContextControls);
     details.appendChild(chatContextRow);
     const addSliderRow = (label, hint, min, max, step, value, key) => {
@@ -1244,7 +1291,7 @@ function setup(ctx) {
       details.appendChild(createElement("div", "xtl-notice", "Generation permission is not currently granted, so actor-authored weaves and replies are unavailable."));
     } else if (!state.connections.length) {
       const notice = createElement("div", "xtl-notice");
-      notice.append(document.createTextNode("No LLM connections are available for this account. Add one in Connections, then return here and refresh. "));
+      notice.append(document2.createTextNode("No LLM connections are available for this account. Add one in Connections, then return here and refresh. "));
       const manageConnections = button("Open Connections", "xtl-button");
       manageConnections.addEventListener("click", () => send({ type: "open_connections" }));
       notice.appendChild(manageConnections);
@@ -1262,6 +1309,8 @@ function setup(ctx) {
     disposeActorPickerPortal = null;
     disposeReactionTooltip?.();
     disposeReactionTooltip = null;
+    timelineTopMarker = null;
+    newWeavePill = null;
     personaPicker?.destroy();
     personaPicker = null;
     sliderHandles.forEach((h) => h.destroy());
@@ -1278,12 +1327,15 @@ function setup(ctx) {
       root.appendChild(createElement("div", "xtl-notice", busyActorName ? `${busyActorName} is weaving…` : "Updating the timeline…"));
     }
     root.append(renderComposer(snapshot), renderTimeline(snapshot), renderRoster(snapshot), renderSettings(snapshot));
+    updateTimelineScrollState();
   };
   const unsubscribeMessages = ctx.onBackendMessage((payload) => {
     const message = asMessage(payload);
     if (!message)
       return;
     if (message.type === "timeline_state" && isSnapshot(message.snapshot)) {
+      updateTimelineScrollState();
+      trackNewActorWeaves(message.snapshot);
       snapshot = message.snapshot;
       if (pendingDraft)
         pendingDraft = null;
@@ -1328,6 +1380,13 @@ function setup(ctx) {
     focusComposer();
   });
   const unsubscribeActivate = tab.onActivate(() => send({ type: "load_timeline" }));
+  const document2 = tab.root.ownerDocument;
+  const onScroll = (event) => {
+    const target = event.target;
+    if (target === document2 || target === document2.documentElement || target === document2.body || target === tab.root || target instanceof Node && target.contains(root))
+      updateTimelineScrollState();
+  };
+  document2.addEventListener("scroll", onScroll, { capture: true, passive: true });
   render();
   send({ type: "load_timeline" });
   ctx.ready();
@@ -1338,6 +1397,7 @@ function setup(ctx) {
     disposeActorPickerPortal = null;
     disposeReactionTooltip?.();
     disposeReactionTooltip = null;
+    document2.removeEventListener("scroll", onScroll, true);
     personaPicker?.destroy();
     personaPicker = null;
     sliderHandles.forEach((h) => h.destroy());
