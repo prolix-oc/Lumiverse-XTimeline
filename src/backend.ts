@@ -47,6 +47,8 @@ const MIN_ROSTER_INTERVAL_MINUTES = 1
 const MAX_ROSTER_INTERVAL_MINUTES = 1_440
 const MAX_CHAT_CONTEXT_MESSAGE_LENGTH = 700
 const ROSTER_ACTION_HISTORY_LIMIT = 9
+const CHARACTER_PAGE_SIZE = 200
+const AVATAR_FETCH_CONCURRENCY = 12
 const BLOCK_HTML_TAGS = new Set(['address', 'article', 'aside', 'blockquote', 'br', 'div', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'ol', 'p', 'pre', 'section', 'table', 'tr', 'ul'])
 const RAW_HTML_TAGS = new Set(['script', 'style', 'template', 'noscript', 'svg', 'math'])
 
@@ -302,11 +304,33 @@ async function resolveAvatarUrls(imageIds: Array<string | null>, userId: string)
   const resolved = new Map<string, string>()
   if (uniqueIds.length === 0 || !spindle.permissions.has('images')) return resolved
 
-  await Promise.all(uniqueIds.map(async (imageId) => {
-    const image = await attempt(`avatar ${imageId}`, null, () => spindle.images.get(imageId, { specificity: 'sm', userId }))
-    if (image?.url) resolved.set(imageId, image.url)
-  }))
+  let nextImageIndex = 0
+  const worker = async () => {
+    while (nextImageIndex < uniqueIds.length) {
+      const imageId = uniqueIds[nextImageIndex]
+      nextImageIndex += 1
+      const image = await attempt(`avatar ${imageId}`, null, () => spindle.images.get(imageId, { specificity: 'sm', userId }))
+      if (image?.url) resolved.set(imageId, image.url)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(AVATAR_FETCH_CONCURRENCY, uniqueIds.length) }, worker))
   return resolved
+}
+
+async function loadAllCharacterCards(userId: string): Promise<{ data: CharacterDTO[]; total: number }> {
+  const data: CharacterDTO[] = []
+  let offset = 0
+  let total = Number.POSITIVE_INFINITY
+
+  while (offset < total) {
+    const page = await spindle.characters.list({ limit: CHARACTER_PAGE_SIZE, offset, userId })
+    data.push(...page.data)
+    total = page.total
+    if (page.data.length === 0) break
+    offset += page.data.length
+  }
+
+  return { data, total: Number.isFinite(total) ? total : data.length }
 }
 
 async function loadDirectory(userId: string): Promise<TimelineDirectory> {
@@ -322,7 +346,7 @@ async function loadDirectory(userId: string): Promise<TimelineDirectory> {
       ? attempt('active persona', null, () => spindle.personas.getActive(userId))
       : Promise.resolve(null),
     canUseCharacters
-      ? attempt('character cards', { data: [], total: 0 }, () => spindle.characters.list({ limit: 200, userId }))
+      ? attempt('character cards', { data: [], total: 0 }, () => loadAllCharacterCards(userId))
       : Promise.resolve({ data: [] as CharacterDTO[], total: 0 }),
     attempt('Council members', [] as CouncilMemberContext[], () => spindle.council.getMembers({ userId })),
     canUseGeneration
@@ -806,7 +830,7 @@ async function runSidecar(
     },
     reasoning: { source: 'off' },
   })
-  return extractAndResolveGif(extractContent(result), state.settings.highQualityGifs ?? false)
+  return extractAndResolveGif(extractContent(result))
 }
 
 function replyMessages(

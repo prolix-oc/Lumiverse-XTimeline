@@ -43,6 +43,8 @@ var MIN_ROSTER_INTERVAL_MINUTES = 1;
 var MAX_ROSTER_INTERVAL_MINUTES = 1440;
 var MAX_CHAT_CONTEXT_MESSAGE_LENGTH = 700;
 var ROSTER_ACTION_HISTORY_LIMIT = 9;
+var CHARACTER_PAGE_SIZE = 200;
+var AVATAR_FETCH_CONCURRENCY = 12;
 var BLOCK_HTML_TAGS = new Set(["address", "article", "aside", "blockquote", "br", "div", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "ol", "p", "pre", "section", "table", "tr", "ul"]);
 var RAW_HTML_TAGS = new Set(["script", "style", "template", "noscript", "svg", "math"]);
 function isRecord(value) {
@@ -262,12 +264,32 @@ async function resolveAvatarUrls(imageIds, userId) {
   const resolved = new Map;
   if (uniqueIds.length === 0 || !spindle.permissions.has("images"))
     return resolved;
-  await Promise.all(uniqueIds.map(async (imageId) => {
-    const image = await attempt(`avatar ${imageId}`, null, () => spindle.images.get(imageId, { specificity: "sm", userId }));
-    if (image?.url)
-      resolved.set(imageId, image.url);
-  }));
+  let nextImageIndex = 0;
+  const worker = async () => {
+    while (nextImageIndex < uniqueIds.length) {
+      const imageId = uniqueIds[nextImageIndex];
+      nextImageIndex += 1;
+      const image = await attempt(`avatar ${imageId}`, null, () => spindle.images.get(imageId, { specificity: "sm", userId }));
+      if (image?.url)
+        resolved.set(imageId, image.url);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(AVATAR_FETCH_CONCURRENCY, uniqueIds.length) }, worker));
   return resolved;
+}
+async function loadAllCharacterCards(userId) {
+  const data = [];
+  let offset = 0;
+  let total = Number.POSITIVE_INFINITY;
+  while (offset < total) {
+    const page = await spindle.characters.list({ limit: CHARACTER_PAGE_SIZE, offset, userId });
+    data.push(...page.data);
+    total = page.total;
+    if (page.data.length === 0)
+      break;
+    offset += page.data.length;
+  }
+  return { data, total: Number.isFinite(total) ? total : data.length };
 }
 async function loadDirectory(userId) {
   const canUsePersonas = spindle.permissions.has("personas");
@@ -276,7 +298,7 @@ async function loadDirectory(userId) {
   const [personaResult, activePersona, characterResult, councilMembers, connectionRows] = await Promise.all([
     canUsePersonas ? attempt("personas", { data: [], total: 0 }, () => spindle.personas.list({ limit: 200, userId })) : Promise.resolve({ data: [], total: 0 }),
     canUsePersonas ? attempt("active persona", null, () => spindle.personas.getActive(userId)) : Promise.resolve(null),
-    canUseCharacters ? attempt("character cards", { data: [], total: 0 }, () => spindle.characters.list({ limit: 200, userId })) : Promise.resolve({ data: [], total: 0 }),
+    canUseCharacters ? attempt("character cards", { data: [], total: 0 }, () => loadAllCharacterCards(userId)) : Promise.resolve({ data: [], total: 0 }),
     attempt("Council members", [], () => spindle.council.getMembers({ userId })),
     canUseGeneration ? attempt("connection profiles", [], () => spindle.connections.list(userId)) : Promise.resolve([])
   ]);
@@ -679,7 +701,7 @@ async function runSidecar(state, directory, messages, userId) {
     },
     reasoning: { source: "off" }
   });
-  return extractAndResolveGif(extractContent(result), state.settings.highQualityGifs ?? false);
+  return extractAndResolveGif(extractContent(result));
 }
 function replyMessages(actor, target, thread, gifChance, chatContext) {
   const mentionableParticipants = [...new Map(thread.filter((post) => post.author.key !== actor.key).map((post) => [post.author.handle, post.author.name])).entries()].map(([handle, name]) => `@${handle} (${name})`).join(", ");
