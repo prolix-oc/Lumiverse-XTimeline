@@ -8,7 +8,7 @@ export const MAX_ROSTER_ACTORS = 30
 export const MAX_CHAT_CONTEXT_MESSAGES = 30
 export const DEFAULT_CHAT_CONTEXT_MESSAGES = 10
 export const MIN_GENERATION_MAX_TOKENS = 32
-export const MAX_GENERATION_MAX_TOKENS = 2_048
+export const MAX_GENERATION_MAX_TOKENS = 32_768
 export const DEFAULT_GENERATION_MAX_TOKENS = 2_048
 export const REACTION_EMOJIS = ['❤', '✨', '🔥', '😂'] as const
 
