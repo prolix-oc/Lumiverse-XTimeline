@@ -120,12 +120,38 @@ function compact(text: string, limit: number): string {
   return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`
 }
 
+function truncateCleanly(text: string, limit: number): string {
+  const characters = Array.from(text)
+  if (characters.length <= limit) return text
+  if (limit <= 0) return ''
+  if (limit === 1) return '…'
+
+  const prefix = characters.slice(0, limit - 1).join('').trimEnd()
+  const sentenceFloor = Math.floor(prefix.length * 0.7)
+  const sentenceBoundary = /(?:[.!?…](?:["'”’\)\]]*)|\n+)(?=\s|$)/gu
+  let cleanEnd = -1
+  for (const match of prefix.matchAll(sentenceBoundary)) {
+    const end = match.index + match[0].length
+    if (end >= sentenceFloor) cleanEnd = end
+  }
+  if (cleanEnd >= sentenceFloor) return prefix.slice(0, cleanEnd).trimEnd()
+
+  const wordFloor = Math.floor(prefix.length * 0.85)
+  const wordBoundary = /\s+/gu
+  let wordEnd = -1
+  for (const match of prefix.matchAll(wordBoundary)) {
+    if (match.index >= wordFloor) wordEnd = match.index
+  }
+  const truncated = wordEnd >= wordFloor ? prefix.slice(0, wordEnd).trimEnd() : prefix
+  return `${truncated}…`
+}
+
 function cleanWeave(text: string, limit = MAX_WEAVE_LENGTH): string {
   const cleaned = text
     .replace(/\r\n/g, '\n')
     .replace(/\u0000/g, '')
     .trim()
-  return Array.from(cleaned).slice(0, limit).join('').trim()
+  return truncateCleanly(cleaned, limit)
 }
 
 function cleanDirectMessage(text: string): string {
@@ -222,13 +248,15 @@ function stripChatHtml(text: string): string {
     .replace(/\u0000/g, '')
 }
 
-function cleanGeneratedWeave(text: string): string {
-  const withoutFence = text
+function unwrapGeneratedContent(text: string): string {
+  return text
     .trim()
     .replace(/^```(?:text|markdown)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .replace(/^(?:weave|tweet|post)\s*:\s*/i, '')
-  return cleanWeave(withoutFence)
+    .replace(/\r\n/g, '\n')
+    .replace(/\u0000/g, '')
+    .trim()
 }
 
 function fallbackPersona(): TimelineActor {
@@ -862,7 +890,7 @@ function extractContent(result: unknown): string {
   if (!isRecord(result) || typeof result.content !== 'string') {
     throw new Error('The Timeline model returned no text.')
   }
-  const content = cleanGeneratedWeave(result.content)
+  const content = unwrapGeneratedContent(result.content)
   if (!content) throw new Error('The Timeline model returned an empty weave.')
   return content
 }
@@ -907,7 +935,10 @@ async function resolveGif(query: string): Promise<string | undefined> {
   return undefined
 }
 
-async function extractAndResolveGif(content: string): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
+async function extractAndResolveGif(
+  content: string,
+  contentLimit: number,
+): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
   let cleanContent = content
   let reaction: string | undefined
 
@@ -927,7 +958,7 @@ async function extractAndResolveGif(content: string): Promise<{ content: string;
   }
   cleanContent = cleanContent.replace(/<reaction>.*?<\/reaction>/gis, '').trim()
 
-  return { content: cleanContent, gifUrl, reaction }
+  return { content: cleanWeave(cleanContent, contentLimit), gifUrl, reaction }
 }
 
 async function runSidecar(
@@ -935,6 +966,7 @@ async function runSidecar(
   directory: TimelineDirectory,
   messages: LlmMessageDTO[],
   userId: string,
+  contentLimit = MAX_WEAVE_LENGTH,
 ): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
   const connection = getSidecarConnection(state, directory)
   const result = await spindle.generate.quiet({
@@ -951,7 +983,7 @@ async function runSidecar(
     },
     reasoning: { source: 'off' },
   })
-  return extractAndResolveGif(extractContent(result))
+  return extractAndResolveGif(extractContent(result), contentLimit)
 }
 
 function directThreadTranscript(thread: TimelineDirectThread): string {
@@ -1333,7 +1365,13 @@ async function startDirectThread(payload: UnknownRecord, userId: string): Promis
   const persona = getPersonaAuthor(directory, payload.personaId, state.settings)
   sendActivity(userId, true, actor.name, 'dm')
   try {
-    const { content, gifUrl } = await runSidecar(state, directory, directMessageMessages(actor, persona, null, state.posts, state.settings, 'start'), userId)
+    const { content, gifUrl } = await runSidecar(
+      state,
+      directory,
+      directMessageMessages(actor, persona, null, state.posts, state.settings, 'start'),
+      userId,
+      MAX_DIRECT_MESSAGE_LENGTH,
+    )
     if (!content && !gifUrl) throw new Error('The actor returned an empty direct message.')
     const thread: TimelineDirectThread = {
       id: crypto.randomUUID(),
@@ -1368,7 +1406,13 @@ async function sendDirectMessage(payload: UnknownRecord, userId: string): Promis
 
   sendActivity(userId, true, thread.actor.name, 'dm')
   try {
-    const reply = await runSidecar(state, directory, directMessageMessages(thread.actor, persona, thread, state.posts, state.settings, 'reply'), userId)
+    const reply = await runSidecar(
+      state,
+      directory,
+      directMessageMessages(thread.actor, persona, thread, state.posts, state.settings, 'reply'),
+      userId,
+      MAX_DIRECT_MESSAGE_LENGTH,
+    )
     if (!reply.content && !reply.gifUrl) throw new Error('The actor returned an empty direct message.')
     thread.messages.push(createDirectMessage({
       author: thread.actor,

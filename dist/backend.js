@@ -99,10 +99,39 @@ function compact(text, limit) {
     return normalized;
   return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
 }
+function truncateCleanly(text, limit) {
+  const characters = Array.from(text);
+  if (characters.length <= limit)
+    return text;
+  if (limit <= 0)
+    return "";
+  if (limit === 1)
+    return "…";
+  const prefix = characters.slice(0, limit - 1).join("").trimEnd();
+  const sentenceFloor = Math.floor(prefix.length * 0.7);
+  const sentenceBoundary = /(?:[.!?…](?:["'”’\)\]]*)|\n+)(?=\s|$)/gu;
+  let cleanEnd = -1;
+  for (const match of prefix.matchAll(sentenceBoundary)) {
+    const end = match.index + match[0].length;
+    if (end >= sentenceFloor)
+      cleanEnd = end;
+  }
+  if (cleanEnd >= sentenceFloor)
+    return prefix.slice(0, cleanEnd).trimEnd();
+  const wordFloor = Math.floor(prefix.length * 0.85);
+  const wordBoundary = /\s+/gu;
+  let wordEnd = -1;
+  for (const match of prefix.matchAll(wordBoundary)) {
+    if (match.index >= wordFloor)
+      wordEnd = match.index;
+  }
+  const truncated = wordEnd >= wordFloor ? prefix.slice(0, wordEnd).trimEnd() : prefix;
+  return `${truncated}…`;
+}
 function cleanWeave(text, limit = MAX_WEAVE_LENGTH) {
   const cleaned = text.replace(/\r\n/g, `
 `).replace(/\u0000/g, "").trim();
-  return Array.from(cleaned).slice(0, limit).join("").trim();
+  return truncateCleanly(cleaned, limit);
 }
 function cleanDirectMessage(text) {
   return cleanWeave(text, MAX_DIRECT_MESSAGE_LENGTH);
@@ -196,9 +225,9 @@ function stripChatHtml(text) {
   return decodeHtmlEntities(output).replace(/\r\n/g, `
 `).replace(/\u0000/g, "");
 }
-function cleanGeneratedWeave(text) {
-  const withoutFence = text.trim().replace(/^```(?:text|markdown)?\s*/i, "").replace(/\s*```$/i, "").replace(/^(?:weave|tweet|post)\s*:\s*/i, "");
-  return cleanWeave(withoutFence);
+function unwrapGeneratedContent(text) {
+  return text.trim().replace(/^```(?:text|markdown)?\s*/i, "").replace(/\s*```$/i, "").replace(/^(?:weave|tweet|post)\s*:\s*/i, "").replace(/\r\n/g, `
+`).replace(/\u0000/g, "").trim();
 }
 function fallbackPersona() {
   return {
@@ -721,7 +750,7 @@ function extractContent(result) {
   if (!isRecord(result) || typeof result.content !== "string") {
     throw new Error("The Timeline model returned no text.");
   }
-  const content = cleanGeneratedWeave(result.content);
+  const content = unwrapGeneratedContent(result.content);
   if (!content)
     throw new Error("The Timeline model returned an empty weave.");
   return content;
@@ -764,7 +793,7 @@ async function resolveGif(query) {
   }
   return;
 }
-async function extractAndResolveGif(content) {
+async function extractAndResolveGif(content, contentLimit) {
   let cleanContent = content;
   let reaction;
   const closedGifTag = content.match(/<gif>\s*([\s\S]*?)\s*<\/gif>/i);
@@ -779,9 +808,9 @@ async function extractAndResolveGif(content) {
     reaction = requestedReaction;
   }
   cleanContent = cleanContent.replace(/<reaction>.*?<\/reaction>/gis, "").trim();
-  return { content: cleanContent, gifUrl, reaction };
+  return { content: cleanWeave(cleanContent, contentLimit), gifUrl, reaction };
 }
-async function runSidecar(state, directory, messages, userId) {
+async function runSidecar(state, directory, messages, userId, contentLimit = MAX_WEAVE_LENGTH) {
   const connection = getSidecarConnection(state, directory);
   const result = await spindle.generate.quiet({
     type: "quiet",
@@ -797,7 +826,7 @@ async function runSidecar(state, directory, messages, userId) {
     },
     reasoning: { source: "off" }
   });
-  return extractAndResolveGif(extractContent(result));
+  return extractAndResolveGif(extractContent(result), contentLimit);
 }
 function directThreadTranscript(thread) {
   return thread.messages.slice(-18).map((message) => message.direction === "incoming" ? `YOU — ${thread.actor.name} (@${thread.actor.handle}): ${message.content || "[GIF]"}` : `DM RECIPIENT — ${message.author.name} (@${message.author.handle}): ${message.content || "[GIF]"}`).join(`
@@ -1104,7 +1133,7 @@ async function startDirectThread(payload, userId) {
   const persona = getPersonaAuthor(directory, payload.personaId, state.settings);
   sendActivity(userId, true, actor.name, "dm");
   try {
-    const { content, gifUrl } = await runSidecar(state, directory, directMessageMessages(actor, persona, null, state.posts, state.settings, "start"), userId);
+    const { content, gifUrl } = await runSidecar(state, directory, directMessageMessages(actor, persona, null, state.posts, state.settings, "start"), userId, MAX_DIRECT_MESSAGE_LENGTH);
     if (!content && !gifUrl)
       throw new Error("The actor returned an empty direct message.");
     const thread = {
@@ -1138,7 +1167,7 @@ async function sendDirectMessage(payload, userId) {
   await sendState(userId, state, directory);
   sendActivity(userId, true, thread.actor.name, "dm");
   try {
-    const reply = await runSidecar(state, directory, directMessageMessages(thread.actor, persona, thread, state.posts, state.settings, "reply"), userId);
+    const reply = await runSidecar(state, directory, directMessageMessages(thread.actor, persona, thread, state.posts, state.settings, "reply"), userId, MAX_DIRECT_MESSAGE_LENGTH);
     if (!reply.content && !reply.gifUrl)
       throw new Error("The actor returned an empty direct message.");
     thread.messages.push(createDirectMessage({
