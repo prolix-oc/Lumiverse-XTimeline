@@ -409,6 +409,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
     .xtl-tab--dms { height: 100%; min-height: 0; overflow: hidden; overscroll-behavior: none; }
     .xtl-app--dms { display: flex; flex-direction: column; height: 100%; min-height: 0; max-height: 100%; overflow: hidden; overscroll-behavior: none; }
+    .xtl-app.xtl-app--dms { padding-bottom: 12px; }
     .xtl-app--dms .xtl-header { position: relative; top: auto; flex: 0 0 auto; }
     .xtl-dm-stage { box-sizing: border-box; flex: 1 1 0; min-height: 0; max-height: 100%; overflow: hidden; }
     .xtl-header { position: sticky; top: 4px; z-index: 1; display: flex; align-items: center; gap: 12px; min-height: 53px; margin: 4px -6px 12px; padding: 0 14px; background: color-mix(in srgb, var(--lumiverse-background, #0a0c10) 92%, transparent); border: 1px solid color-mix(in srgb, var(--xtl-line) 88%, transparent); border-radius: 12px; backdrop-filter: blur(16px); }
