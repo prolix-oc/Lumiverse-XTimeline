@@ -532,7 +532,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-dm-gif { display: block; width: auto; max-width: 100%; height: auto; max-height: 260px; object-fit: contain; }
     .xtl-dm-time { color: var(--xtl-muted); margin: 2px 4px 0; font-size: 10px; }
     .xtl-dm-message-row--outgoing .xtl-dm-time { text-align: right; }
-    .xtl-dm-composer { flex: 0 0 auto; padding: 10px 12px 12px; border-top: 1px solid var(--xtl-line); background: #0b0e12; }
+    .xtl-dm-composer { flex: 0 0 auto; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px 12px; border-top: 1px solid var(--xtl-line); background: #0b0e12; }
     .xtl-dm-compose-row { display: flex; align-items: flex-end; gap: 7px; }
     .xtl-dm-compose-row .xtl-textarea { min-height: 43px; max-height: 150px; padding: 10px 12px; resize: none; }
     .xtl-dm-gif-toggle { display: grid; place-items: center; min-width: 39px; height: 39px; padding: 0; border-radius: 10px; color: #9ddcff; font-size: 11px; }
