@@ -1935,7 +1935,7 @@ export function setup(ctx: SpindleFrontendContext) {
       'p',
       'xtl-roster-copy',
       rosterActors.length
-        ? `Followed actors take turns from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.`
+        ? `Followed actors take turns from a randomized rotation every ${interval}; they may weave, reply, react, or privately DM your selected persona. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.`
         : `Follow actors to add them to the randomized timeline rotation every ${interval}.`,
     ))
 

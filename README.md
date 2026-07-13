@@ -5,7 +5,7 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 ## What it includes
 
 - A global **Timeline** drawer tab and a **Weave current chat** action in the composer. It publishes the typed weave verbatim as the selected persona, attaches the active chat as private context, and automatically invites that chat's character to respond.
-- A Twitter-style **Messages** view inside the Timeline drawer, with an unread badge, actor-first private conversation threads, and separate inbox state. Use **DM now** on a followed actor or start a thread from the inbox; direct-message replies remain private and never appear on the timeline.
+- A Twitter-style **Messages** view inside the Timeline drawer, with an unread badge, actor-first private conversation threads, and separate inbox state. Use **DM now** on a followed actor or start a thread from the inbox; followed actors can also choose a DM when a turn is genuinely better kept one-to-one. Direct messages remain private and never appear on the timeline.
 - GIF attachments in DMs: attach a GIF with a short Tenor search from the composer, while actors can also add a contextual GIF to a reply.
 - Persona-authored weaves, threaded replies, and lightweight reactions.
 - A saved timeline sort option for newest weaves or recent thread activity; activity mode promotes an older thread when it receives a new reply.

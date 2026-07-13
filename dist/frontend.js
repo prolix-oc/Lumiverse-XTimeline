@@ -1719,7 +1719,7 @@ function setup(ctx) {
     header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount, claimMissing, followActors);
     card.appendChild(header);
     const interval = `${state.state.settings.minActorWeaveIntervalMinutes}–${state.state.settings.maxActorWeaveIntervalMinutes} min`;
-    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `Followed actors take turns from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Follow actors to add them to the randomized timeline rotation every ${interval}.`));
+    card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `Followed actors take turns from a randomized rotation every ${interval}; they may weave, reply, react, or privately DM your selected persona. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Follow actors to add them to the randomized timeline rotation every ${interval}.`));
     const rosterList = createElement("div", "xtl-roster-list");
     if (rosterActors.length) {
       for (const actor of rosterActors) {
