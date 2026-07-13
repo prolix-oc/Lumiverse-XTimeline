@@ -857,9 +857,20 @@ async function resolveGif(query) {
 async function extractAndResolveGif(content, contentLimit, outputActor) {
   let cleanContent = content;
   let reaction;
-  const closedGifTag = content.match(/<gif>\s*([\s\S]*?)\s*<\/gif>/i);
-  const incompleteGifTag = closedGifTag ? null : content.match(/<gif>\s*([^<>\r\n]+?)\s*(?:>|$)/i);
-  const gifTag = closedGifTag ?? incompleteGifTag;
+  const gifDirectivePatterns = [
+    /(?:^|\n)[ \t]*```(?:xml|html)?[ \t]*\n[ \t]*<gif\s*>\s*([^<>\r\n]+?)\s*<\/gif\s*>[ \t]*\n[ \t]*```[ \t]*$/i,
+    /<gif\s*>\s*([^<>\r\n]+?)\s*<\/gif\s*>/i,
+    /<(?:gif[_-]?query|tenor)\s*>\s*([^<>\r\n]+?)\s*<\/(?:gif[_-]?query|tenor)\s*>/i,
+    /\[gif\]\s*([^\[\]\r\n]+?)\s*\[\/gif\]/i,
+    /(?:^|\n)[ \t]*<gif\s*>\s*([^<>\r\n]+?)\s*(?:<\/gif\s*)?>?[ \t]*$/i,
+    /(?:^|\n)[ \t]*(?:gif(?:[ \t]+(?:search|query))?|tenor(?:[ \t]+search)?)\s*:\s*([^\r\n]{1,120}?)[ \t]*$/i
+  ];
+  let gifTag = null;
+  for (const pattern of gifDirectivePatterns) {
+    gifTag = content.match(pattern);
+    if (gifTag)
+      break;
+  }
   const gifUrl = gifTag?.[1] ? await resolveGif(gifTag[1]) : undefined;
   if (gifTag)
     cleanContent = content.replace(gifTag[0], "").trim();
@@ -1004,6 +1015,7 @@ ${post.content}
 }
 function directMessageMessages(actor, persona, thread, posts, settings, mode) {
   const gifChance = settings.gifChance ?? 35;
+  const allowGif = Math.random() < gifChance / 100;
   const encourageNsfw = settings.encourageNsfw ?? false;
   const transcript = thread ? directThreadTranscript(thread) : "";
   const recentTimeline = directMessageTimelineContext(posts, actor, persona);
@@ -1019,7 +1031,7 @@ function directMessageMessages(actor, persona, thread, posts, settings, mode) {
         ...encourageNsfw ? ["You may use NSFW, provocative, explicit language, sexual topics, and banter when it fits the character and the existing private conversation."] : [],
         mode === "start" ? `Open a natural private conversation with ${persona.name}. Make the first message specific enough to invite a real response, but do not assume a prior conversation.` : `Reply directly to ${persona.name}'s latest private message. Keep the exchange moving without restating the whole conversation.`,
         "Keep it under 700 characters. Do not prefix it with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.",
-        ...Math.random() < gifChance / 100 ? ["If a GIF would make the message land better, you may attach one by putting a short Tenor search query in <gif> tags on a new final line."] : [],
+        ...allowGif ? ["If a GIF would make the message land better, you may attach one. If you do, the last line must be exactly <gif>SHORT SEARCH QUERY</gif>, with both literal tags and no label, URL, JSON, markdown, or code fence. Keep the query on that one line."] : [],
         `PROFILE:
 ${actor.profile || actor.bio}`
       ].join(`
@@ -1045,6 +1057,7 @@ ${recentTimeline || "(empty)"}`,
 }
 function replyMessages(actor, target, thread, settings, chatContext) {
   const gifChance = settings.gifChance ?? 35;
+  const requiresGif = Math.random() < gifChance / 100;
   const encourageNsfw = settings.encourageNsfw ?? false;
   const mentionableParticipants = [...new Map(thread.filter((post) => post.author.key !== actor.key).map((post) => [post.author.handle, post.author.name])).entries()].map(([handle, name]) => `@${handle} (${name})`).join(", ");
   return [
@@ -1062,9 +1075,11 @@ function replyMessages(actor, target, thread, settings, chatContext) {
         "Let the character invite real social discourse when it fits: they may agree, push back, sharpen a point, ask a pointed question, add dry humor, or make a clear observation. Do not manufacture outrage, harass anyone, or force a disagreement when genuine agreement suits the character.",
         "Do not add a reaction tag. Reactions are scheduled as their own timeline turns so replies remain actual replies.",
         `Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. OUTPUT FORMAT: return only the reply body, plus the optional final <gif> line when requested. Begin directly with the message itself. Never begin with your own handle or a speaker name; specifically, do not write "@${actor.handle}:". Do not add any speaker label, quotation marks, or commentary about the prompt or being an AI.`,
-        ...Math.random() < gifChance / 100 ? ["You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on its own line at the end of your reply. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs."] : [],
         `PROFILE:
-${actor.profile || actor.bio}`
+${actor.profile || actor.bio}`,
+        ...requiresGif ? [
+          "GIF ATTACHMENT REQUIRED — OUTPUT CONTRACT: After the reply body, add exactly one final line in this exact form: <gif>SHORT SEARCH QUERY</gif>. Replace SHORT SEARCH QUERY with a specific, funny 2–8 word Tenor search; do not copy the placeholder. Both literal tags are mandatory. Do not use GIF:, a URL, JSON, markdown, a code fence, or any alternative tag. Before submitting, verify that the final line begins with <gif> and ends with </gif>."
+        ] : []
       ].join(`
 
 `)
@@ -1086,7 +1101,8 @@ ELIGIBLE OPTIONAL MENTIONS: ${mentionableParticipants || "none"}`,
 LATEST WEAVE TO ANSWER — @${target.author.handle}:
 ${target.content}
 
-Write your reply now.`
+Write your reply now.${requiresGif ? `
+The required last line is: <gif>your 2–8 word search query</gif>` : ""}`
       ].join(`
 `)
     }
@@ -1098,6 +1114,7 @@ function recentWeaveContext(posts, limit = RECENT_TIMELINE_CONTEXT_POSTS) {
 }
 function originalWeaveMessages(actor, settings, posts, userPersona) {
   const gifChance = settings.gifChance ?? 35;
+  const requiresGif = Math.random() < gifChance / 100;
   const encourageNsfw = settings.encourageNsfw ?? false;
   const recentTimeline = recentWeaveContext(posts);
   const eligibleHandles = [...new Set([
@@ -1116,9 +1133,11 @@ function originalWeaveMessages(actor, settings, posts, userPersona) {
         "When it fits the character, you may subtweet a real recent timeline take, disagreement, or bit of drama: make a wry or oblique allusion without naming anyone. Do not invent off-timeline events, relationships, or private knowledge, and do not force drama into every weave.",
         "A direct @mention is optional, not required. The user persona is eligible even if they have not posted recently. If a mention would make the point clearer, use at most one exact handle from the eligible list; otherwise keep the reference indirect.",
         "The voice can be warm, skeptical, witty, blunt, curious, or contrarian when supported by the profile. Do not invent concrete events or relationships. Stay under 420 characters. Do not prefix it with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.",
-        ...Math.random() < gifChance / 100 ? ["You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on a new line at the very end of your response. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs."] : [],
         `PROFILE:
-${actor.profile || actor.bio}`
+${actor.profile || actor.bio}`,
+        ...requiresGif ? [
+          "GIF ATTACHMENT REQUIRED — OUTPUT CONTRACT: After the post body, add exactly one final line in this exact form: <gif>SHORT SEARCH QUERY</gif>. Replace SHORT SEARCH QUERY with a specific, funny 2–8 word Tenor search; do not copy the placeholder. Both literal tags are mandatory. Do not use GIF:, a URL, JSON, markdown, a code fence, or any alternative tag. Before submitting, verify that the final line begins with <gif> and ends with </gif>."
+        ] : []
       ].join(`
 
 `)
@@ -1130,7 +1149,8 @@ ${actor.profile || actor.bio}`
 ${recentTimeline || "(empty)"}`,
         `USER PERSONA (eligible optional direct mention): @${userPersona.handle} (${userPersona.name})`,
         `ELIGIBLE OPTIONAL DIRECT MENTIONS: ${eligibleHandles || "none"}`,
-        "Write the weave now."
+        `Write the weave now.${requiresGif ? `
+The required last line is: <gif>your 2–8 word search query</gif>` : ""}`
       ].join(`
 
 `)
