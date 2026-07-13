@@ -592,8 +592,8 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 2px; }
     .xtl-actor-card .xtl-button { color: #9bd7ff; border-color: color-mix(in srgb, var(--xtl-blue) 46%, #39424d); font-size: 11px; padding: 6px 9px; }
     .xtl-roster-actor-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 11px; }
-    .xtl-roster-actor-card .xtl-actor-card-actions { display: grid; grid-column: 1 / -1; grid-template-columns: 1.35fr 1fr .8fr .8fr; width: 100%; gap: 6px; margin-left: 0; }
-    .xtl-roster-actor-card .xtl-button { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xtl-roster-actor-card .xtl-actor-card-actions { display: grid; grid-column: 1 / -1; grid-template-columns: 1.35fr 1fr .8fr .8fr; width: 100%; min-width: 0; box-sizing: border-box; gap: 6px; margin-left: 0; }
+    .xtl-roster-actor-card .xtl-button { width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .xtl-management-anchor { height: 1px; scroll-margin-top: 68px; }
     .xtl-follow-modal { display: grid; gap: 12px; min-height: 0; }
     .xtl-follow-modal-copy { margin: 0; color: var(--lumiverse-text-muted, #8b98a5); font-size: 13px; line-height: 1.45; }
@@ -611,7 +611,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .xtl-number-input:focus { border-color: var(--xtl-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--xtl-blue) 20%, transparent); outline: none; }
     .xtl-loading { padding: 44px 16px; color: var(--xtl-muted); font-size: 14px; text-align: center; }
     @media (max-width: 680px) { .xtl-dm-message-row { max-width: 93%; } }
-    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } .xtl-dm-gif-search, .xtl-dm-gif-chip { margin-left: 0; max-width: 100%; } }
+    @media (max-width: 520px) { .xtl-app { padding: 0 9px 24px; } .xtl-header { margin-inline: -9px; padding-inline: 13px; } .xtl-subtitle { display: none; } .xtl-post-body, .xtl-post-source, .xtl-post-gif { margin-left: 0 !important; } .xtl-post-gif { width: 100%; } .xtl-post-actions { margin-left: -6px; } .xtl-post--reply { margin-left: 10px; } .xtl-composer-top, .xtl-settings-row { align-items: flex-start; flex-direction: column; } .xtl-select, .xtl-persona-picker { max-width: 100%; width: 100%; } .xtl-roster-list { grid-template-columns: 1fr; } .xtl-actor-card-actions { margin-left: auto; } .xtl-roster-actor-card .xtl-actor-card-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } .xtl-dm-gif-search, .xtl-dm-gif-chip { margin-left: 0; max-width: 100%; } }
   `)
 
   const selectedPersona = (): TimelineActor | null => {
