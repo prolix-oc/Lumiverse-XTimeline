@@ -1,6 +1,7 @@
 // src/shared.ts
 var MAX_WEAVE_LENGTH = 500;
 var MAX_DIRECT_MESSAGE_LENGTH = 1000;
+var MAX_IDENTITY_BACKFILL_BATCH = 20;
 var MIN_GENERATION_MAX_TOKENS = 32;
 var MAX_GENERATION_MAX_TOKENS = 32768;
 var DEFAULT_GENERATION_MAX_TOKENS = 2048;
@@ -496,7 +497,7 @@ function setup(ctx) {
     .xtl-new-weaves:hover:not(:disabled) { border-color: #b6e3ff; background: linear-gradient(180deg, #44b4fa, #1a95e5); color: #fff; }
     .xtl-empty { padding: 42px 28px; color: var(--xtl-muted); text-align: center; font-size: 14px; line-height: 1.55; }
     .xtl-roster { padding: 14px; background: var(--xtl-surface-raised); }
-    .xtl-roster-header { justify-content: space-between; }
+    .xtl-roster-header { justify-content: space-between; flex-wrap: wrap; }
     .xtl-roster-browser-header { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--xtl-line); }
     .xtl-section-title { margin: 0; font-size: 15px; letter-spacing: -.015em; }
     .xtl-roster-copy { margin: 8px 0 0; color: var(--xtl-muted); font-size: 12px; line-height: 1.45; }
@@ -515,7 +516,7 @@ function setup(ctx) {
     .xtl-actor-card-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 11px; margin-top: 2px; }
     .xtl-actor-card .xtl-button { color: #9bd7ff; border-color: color-mix(in srgb, var(--xtl-blue) 46%, #39424d); font-size: 11px; padding: 6px 9px; }
     .xtl-roster-actor-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 11px; }
-    .xtl-roster-actor-card .xtl-actor-card-actions { display: grid; grid-column: 1 / -1; grid-template-columns: 1.25fr 1fr 1fr; width: 100%; gap: 6px; margin-left: 0; }
+    .xtl-roster-actor-card .xtl-actor-card-actions { display: grid; grid-column: 1 / -1; grid-template-columns: 1.35fr 1fr .8fr .8fr; width: 100%; gap: 6px; margin-left: 0; }
     .xtl-roster-actor-card .xtl-button { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .xtl-management-anchor { height: 1px; scroll-margin-top: 68px; }
     .xtl-follow-modal { display: grid; gap: 12px; min-height: 0; }
@@ -1684,11 +1685,38 @@ function setup(ctx) {
     card.appendChild(timelineManagementMarker);
     const header = createElement("div", "xtl-roster-header");
     const rosterActors = state.state.rosterActorKeys.map((key) => state.replyActors.find((actor) => actor.key === key)).filter((actor) => Boolean(actor));
+    const representedActorKeys = new Set(state.state.rosterActorKeys);
+    const availableActorKeys = new Set(state.replyActors.map((actor) => actor.key));
+    for (const post of state.state.posts) {
+      if (post.author.kind !== "persona") {
+        representedActorKeys.add(post.author.key);
+        availableActorKeys.add(post.author.key);
+      }
+    }
+    for (const thread of state.state.directThreads) {
+      representedActorKeys.add(thread.actor.key);
+      availableActorKeys.add(thread.actor.key);
+    }
+    const missingIdentityCount = [...representedActorKeys].filter((key) => availableActorKeys.has(key) && !state.state.actorIdentities[key]).length;
     const rosterCount = createElement("span", "xtl-chip", `${rosterActors.length} following`);
     const followActors = button("Follow actors");
     followActors.disabled = busy || state.replyActors.length === 0;
     followActors.addEventListener("click", openFollowModal);
-    header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount, followActors);
+    const claimMissing = button(`Claim identities (${missingIdentityCount})`);
+    claimMissing.hidden = missingIdentityCount === 0;
+    claimMissing.disabled = busy || !state.permissions.includes("generation") || !state.state.settings.sidecarConnectionId;
+    claimMissing.title = "Claim actor-chosen identities for followed actors and actors already present in posts or DMs";
+    claimMissing.addEventListener("click", () => {
+      const batchSize = Math.min(missingIdentityCount, MAX_IDENTITY_BACKFILL_BATCH);
+      const confirmed = tab.root.ownerDocument.defaultView?.confirm(`Claim identities for ${batchSize} ${batchSize === 1 ? "actor" : "actors"} now? This makes one sidecar generation call per actor.${missingIdentityCount > batchSize ? ` ${missingIdentityCount - batchSize} more will remain for another batch.` : ""}`);
+      if (!confirmed)
+        return;
+      busy = true;
+      busyActorName = null;
+      render();
+      send({ type: "backfill_actor_identities" });
+    });
+    header.append(createElement("h3", "xtl-section-title", "Actor roster"), rosterCount, claimMissing, followActors);
     card.appendChild(header);
     const interval = `${state.state.settings.minActorWeaveIntervalMinutes}–${state.state.settings.maxActorWeaveIntervalMinutes} min`;
     card.appendChild(createElement("p", "xtl-roster-copy", rosterActors.length ? `Followed actors take turns from a randomized rotation every ${interval}; they may weave, reply, or react. The next turn is ${timeUntil(state.state.nextRosterWeaveAt)}.` : `Follow actors to add them to the randomized timeline rotation every ${interval}.`));
@@ -1699,6 +1727,16 @@ function setup(ctx) {
         const details = createElement("div", "xtl-actor-card-info");
         details.append(createElement("div", "xtl-actor-card-name", actor.name), createElement("div", "xtl-actor-card-meta", `@${actor.handle} · ${actor.role ?? actor.bio}`));
         const actions = createElement("div", "xtl-actor-card-actions");
+        const hasClaimedIdentity = Boolean(state.state.actorIdentities[actor.key]);
+        const chooseIdentity = button(hasClaimedIdentity ? "Rechoose identity" : "Choose identity", "xtl-button");
+        chooseIdentity.title = hasClaimedIdentity ? `Have ${actor.name} choose a new display name and @ handle` : `Have ${actor.name} choose a display name and @ handle`;
+        chooseIdentity.disabled = busy || !state.permissions.includes("generation") || !state.state.settings.sidecarConnectionId;
+        chooseIdentity.addEventListener("click", () => {
+          busy = true;
+          busyActorName = actor.name;
+          render();
+          send({ type: "generate_actor_identity", actorKey: actor.key });
+        });
         const weaveNow = button("Weave now", "xtl-button");
         weaveNow.disabled = busy || !state.permissions.includes("generation");
         weaveNow.addEventListener("click", () => {
@@ -1714,7 +1752,7 @@ function setup(ctx) {
         const unfollow = button("Unfollow", "xtl-button xtl-button--quiet");
         unfollow.disabled = busy;
         unfollow.addEventListener("click", () => send({ type: "toggle_roster_actor", actorKey: actor.key }));
-        actions.append(weaveNow, dmNow, unfollow);
+        actions.append(chooseIdentity, weaveNow, dmNow, unfollow);
         item.append(actorAvatar(actor, "small"), details, actions);
         rosterList.appendChild(item);
       }
@@ -1931,11 +1969,11 @@ function setup(ctx) {
     addSliderRow("Frequency Penalty", "How much to penalize new tokens based on their existing frequency in the text so far.", 0, 2, 0.05, state.state.settings.frequencyPenalty ?? 0, "frequencyPenalty");
     const resetRow = createElement("div", "xtl-settings-row");
     const resetLabels = createElement("div");
-    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes public weaves, reactions, reply threads, and direct messages. Followed actors, their schedule, and saved settings stay in place."));
+    resetLabels.append(createElement("div", "xtl-settings-label", "Reset timeline"), createElement("div", "xtl-settings-hint", "Deletes public weaves, reactions, reply threads, and direct messages. Followed actors, claimed identities, their schedule, and saved settings stay in place."));
     const reset = button("Reset timeline", "xtl-button xtl-button--danger");
     reset.disabled = busy;
     reset.addEventListener("click", () => {
-      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All public weaves, reactions, reply threads, and direct messages will be deleted. Followed actors and settings will stay in place.");
+      const confirmed = tab.root.ownerDocument.defaultView?.confirm("Reset this timeline? All public weaves, reactions, reply threads, and direct messages will be deleted. Followed actors, claimed identities, and settings will stay in place.");
       if (!confirmed)
         return;
       draft = "";
@@ -2006,7 +2044,7 @@ function setup(ctx) {
     if (renderedError)
       root.appendChild(renderedError);
     if (busy) {
-      root.appendChild(createElement("div", "xtl-notice", busyActorName ? `${busyActorName} is weaving…` : "Updating the timeline…"));
+      root.appendChild(createElement("div", "xtl-notice", busyActorName ? `${busyActorName} is working…` : "Updating the timeline…"));
     }
     root.append(renderComposer(snapshot), renderTimeline(snapshot), renderRoster(snapshot), renderSettings(snapshot));
     updateTimelineScrollState();

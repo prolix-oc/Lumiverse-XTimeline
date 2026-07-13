@@ -5,6 +5,7 @@ export const MAX_POSTS = 320
 export const MAX_DIRECT_THREADS = 80
 export const MAX_DIRECT_MESSAGES_PER_THREAD = 120
 export const MAX_ROSTER_ACTORS = 30
+export const MAX_IDENTITY_BACKFILL_BATCH = 20
 export const MAX_CHAT_CONTEXT_MESSAGES = 30
 export const DEFAULT_CHAT_CONTEXT_MESSAGES = 10
 export const MIN_GENERATION_MAX_TOKENS = 32
@@ -26,6 +27,12 @@ export interface TimelineActor {
   bio: string
   profile: string
   role?: string
+}
+
+export interface TimelineActorIdentity {
+  displayName: string
+  handle: string
+  createdAt: number
 }
 
 export interface TimelineReaction {
@@ -94,9 +101,10 @@ export interface TimelineSettings {
 }
 
 export interface TimelineState {
-  version: 7
+  version: 8
   posts: TimelinePost[]
   directThreads: TimelineDirectThread[]
+  actorIdentities: Record<string, TimelineActorIdentity>
   rosterActorKeys: string[]
   rosterActorQueue: string[]
   rosterLastActorKey: string | null
@@ -124,9 +132,10 @@ export interface TimelineSnapshot {
 
 export function createEmptyTimelineState(): TimelineState {
   return {
-    version: 7,
+    version: 8,
     posts: [],
     directThreads: [],
+    actorIdentities: {},
     rosterActorKeys: [],
     rosterActorQueue: [],
     rosterLastActorKey: null,

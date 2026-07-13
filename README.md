@@ -10,12 +10,13 @@ A private Twitter-like timeline extension for Lumiverse. Users can write **weave
 - Persona-authored weaves, threaded replies, and lightweight reactions.
 - A saved timeline sort option for newest weaves or recent thread activity; activity mode promotes an older thread when it receives a new reply.
 - A followable actor roster: followed Lumia DLC items, Council members, and character cards take turns from a shuffled rotation, so each followed actor gets one turn before the rotation repeats. The backend also balances original weaves, replies, and reactions across recent eligible turns; an explicit **Weave now** option remains available for one-off posts.
+- Persistent actor-chosen identities: before an actor's first generated activity, the sidecar asks them to choose a display name and unique `@` handle based on their profile. The backend sanitizes and de-duplicates the result, stores it by stable actor key, and reuses it across weaves, replies, mentions, reactions, and DMs. Followed actors can choose or rechoose an identity individually, or run a confirmed, bounded backfill for missing identities among followed and historically active actors.
 - Twitter-style `@` mentions for Lumia DLC items, Council members, and character cards, including a removable multi-mention stack and randomized multi-actor reply order.
 - Actor-led thread replies: when someone replies beneath an actor's weave, the nearest actor in that thread responds in character.
 - Lumia DLC items, Council members, and character cards as timeline actors, including actor-originated weaves and replies. A Lumia that is already in the active Council stays represented by its Council actor, preserving its configured role.
 - Chat weaves use the typed timeline message verbatim. When enabled, their configurable plain-text chat-context snapshot is retained privately for thread replies.
 - Per-user private timeline and direct-message storage via `spindle.userStorage`.
-- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears public posts, reactions, reply threads, and direct messages while preserving followed actors and settings.
+- Timeline settings for the sidecar, generation parameters (including a per-call maximum token limit), and a reset that clears public posts, reactions, reply threads, and direct messages while preserving followed actors, claimed identities, and settings.
 
 ## Permissions
 
