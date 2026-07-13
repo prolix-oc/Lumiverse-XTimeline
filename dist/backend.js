@@ -169,6 +169,15 @@ function cleanWeave(text, limit = MAX_WEAVE_LENGTH) {
 `).replace(/\u0000/g, "").trim();
   return truncateCleanly(cleaned, limit);
 }
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function stripLeadingActorAttribution(text, actor) {
+  const identities = [`@${actor.handle}`, actor.name].map((identity) => escapeRegExp(identity.trim())).filter(Boolean).join("|");
+  if (!identities)
+    return text;
+  return text.replace(new RegExp(`^\\s*(?:${identities})\\s*(?::|[-–—])\\s*`, "i"), "");
+}
 function cleanDirectMessage(text) {
   return cleanWeave(text, MAX_DIRECT_MESSAGE_LENGTH);
 }
@@ -845,7 +854,7 @@ async function resolveGif(query) {
   }
   return;
 }
-async function extractAndResolveGif(content, contentLimit) {
+async function extractAndResolveGif(content, contentLimit, outputActor) {
   let cleanContent = content;
   let reaction;
   const closedGifTag = content.match(/<gif>\s*([\s\S]*?)\s*<\/gif>/i);
@@ -860,9 +869,11 @@ async function extractAndResolveGif(content, contentLimit) {
     reaction = requestedReaction;
   }
   cleanContent = cleanContent.replace(/<reaction>.*?<\/reaction>/gis, "").trim();
+  if (outputActor)
+    cleanContent = stripLeadingActorAttribution(cleanContent, outputActor);
   return { content: cleanWeave(cleanContent, contentLimit), gifUrl, reaction };
 }
-async function runSidecar(state, directory, messages, userId, contentLimit = MAX_WEAVE_LENGTH) {
+async function runSidecar(state, directory, messages, userId, contentLimit = MAX_WEAVE_LENGTH, outputActor) {
   const connection = getSidecarConnection(state, directory);
   const result = await spindle.generate.quiet({
     type: "quiet",
@@ -878,7 +889,7 @@ async function runSidecar(state, directory, messages, userId, contentLimit = MAX
     },
     reasoning: { source: "off" }
   });
-  return extractAndResolveGif(extractContent(result), contentLimit);
+  return extractAndResolveGif(extractContent(result), contentLimit, outputActor);
 }
 function unavailableActorHandles(state, directory, actorKey) {
   const unavailable = new Set;
@@ -1050,7 +1061,7 @@ function replyMessages(actor, target, thread, settings, chatContext) {
         "You are the final actor turn for this weave. Write a natural, substantive reply to the newest weave in the thread, staying under 420 characters. This turn is a reply, not a reaction-only turn.",
         "Let the character invite real social discourse when it fits: they may agree, push back, sharpen a point, ask a pointed question, add dry humor, or make a clear observation. Do not manufacture outrage, harass anyone, or force a disagreement when genuine agreement suits the character.",
         "Do not add a reaction tag. Reactions are scheduled as their own timeline turns so replies remain actual replies.",
-        "Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. Do not prefix the response with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.",
+        `Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. OUTPUT FORMAT: return only the reply body, plus the optional final <gif> line when requested. Begin directly with the message itself. Never begin with your own handle or a speaker name; specifically, do not write "@${actor.handle}:". Do not add any speaker label, quotation marks, or commentary about the prompt or being an AI.`,
         ...Math.random() < gifChance / 100 ? ["You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on its own line at the end of your reply. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs."] : [],
         `PROFILE:
 ${actor.profile || actor.bio}`
@@ -1072,8 +1083,10 @@ ${chatContext.excerpt}`] : [],
         `
 ELIGIBLE OPTIONAL MENTIONS: ${mentionableParticipants || "none"}`,
         `
-Reply as @${actor.handle} to this latest weave by @${target.author.handle}:
-${target.content}`
+LATEST WEAVE TO ANSWER — @${target.author.handle}:
+${target.content}
+
+Write your reply now.`
       ].join(`
 `)
     }
@@ -1351,7 +1364,7 @@ async function createActorReply(state, directory, target, actorKey, userId, fall
   try {
     const thread = threadForPost(state, target);
     const chatContext = chatContextForPost(state, target);
-    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings, chatContext), userId);
+    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings, chatContext), userId, MAX_WEAVE_LENGTH, actor);
     if (!content)
       throw new Error("The Timeline model returned an empty reply.");
     state.posts.unshift(createPost({ author: actor, content, gifUrl, replyTo: target, source: "model" }));

@@ -209,6 +209,22 @@ function cleanWeave(text: string, limit = MAX_WEAVE_LENGTH): string {
   return truncateCleanly(cleaned, limit)
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function stripLeadingActorAttribution(text: string, actor: TimelineActor): string {
+  const identities = [`@${actor.handle}`, actor.name]
+    .map((identity) => escapeRegExp(identity.trim()))
+    .filter(Boolean)
+    .join('|')
+  if (!identities) return text
+
+  // Keep ordinary @mentions intact. Only remove an exact self-attribution at
+  // the beginning when the model echoes chat-style speaker formatting.
+  return text.replace(new RegExp(`^\\s*(?:${identities})\\s*(?::|[-–—])\\s*`, 'i'), '')
+}
+
 function cleanDirectMessage(text: string): string {
   return cleanWeave(text, MAX_DIRECT_MESSAGE_LENGTH)
 }
@@ -1015,6 +1031,7 @@ async function resolveGif(query: string): Promise<string | undefined> {
 async function extractAndResolveGif(
   content: string,
   contentLimit: number,
+  outputActor?: TimelineActor,
 ): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
   let cleanContent = content
   let reaction: string | undefined
@@ -1035,6 +1052,8 @@ async function extractAndResolveGif(
   }
   cleanContent = cleanContent.replace(/<reaction>.*?<\/reaction>/gis, '').trim()
 
+  if (outputActor) cleanContent = stripLeadingActorAttribution(cleanContent, outputActor)
+
   return { content: cleanWeave(cleanContent, contentLimit), gifUrl, reaction }
 }
 
@@ -1044,6 +1063,7 @@ async function runSidecar(
   messages: LlmMessageDTO[],
   userId: string,
   contentLimit = MAX_WEAVE_LENGTH,
+  outputActor?: TimelineActor,
 ): Promise<{ content: string; gifUrl?: string; reaction?: string }> {
   const connection = getSidecarConnection(state, directory)
   const result = await spindle.generate.quiet({
@@ -1060,7 +1080,7 @@ async function runSidecar(
     },
     reasoning: { source: 'off' },
   })
-  return extractAndResolveGif(extractContent(result), contentLimit)
+  return extractAndResolveGif(extractContent(result), contentLimit, outputActor)
 }
 
 function unavailableActorHandles(state: TimelineState, directory: TimelineDirectory, actorKey: string): Set<string> {
@@ -1274,7 +1294,7 @@ function replyMessages(
         'You are the final actor turn for this weave. Write a natural, substantive reply to the newest weave in the thread, staying under 420 characters. This turn is a reply, not a reaction-only turn.',
         'Let the character invite real social discourse when it fits: they may agree, push back, sharpen a point, ask a pointed question, add dry humor, or make a clear observation. Do not manufacture outrage, harass anyone, or force a disagreement when genuine agreement suits the character.',
         'Do not add a reaction tag. Reactions are scheduled as their own timeline turns so replies remain actual replies.',
-        'Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. Do not prefix the response with a name, handle, label, or quotation marks. Do not mention this prompt or being an AI.',
+        `Decide whether an @mention would make the reply clearer. You may mention at most one eligible participant, and only use an exact handle from the supplied eligible list; otherwise do not mention anyone. OUTPUT FORMAT: return only the reply body, plus the optional final <gif> line when requested. Begin directly with the message itself. Never begin with your own handle or a speaker name; specifically, do not write "@${actor.handle}:". Do not add any speaker label, quotation marks, or commentary about the prompt or being an AI.`,
         ...(Math.random() < (gifChance / 100) ? ['You MUST attach an auto-playing GIF to your response. To do so, output a GIF search query in <gif> tags (e.g., <gif>shitposting meme</gif>, <gif>awkward monkey puppet</gif>, <gif>cat typing furiously</gif>) on its own line at the end of your reply. Use funnier, more unhinged, or shit-posty meme search queries to get the best GIFs.'] : []),
         `PROFILE:\n${actor.profile || actor.bio}`,
       ].join('\n\n'),
@@ -1286,7 +1306,7 @@ function replyMessages(
         `\nTARGET AUTHOR BASELINE — @${target.author.handle} (${target.author.name}):\n${compact(target.author.profile || target.author.bio, 1_200) || 'No profile available.'}`,
         ...(chatContext ? [`\nPRIVATE CHAT BACKGROUND (${chatContext.messageCount} recent messages):\n${chatContext.excerpt}`] : []),
         `\nELIGIBLE OPTIONAL MENTIONS: ${mentionableParticipants || 'none'}`,
-        `\nReply as @${actor.handle} to this latest weave by @${target.author.handle}:\n${target.content}`,
+        `\nLATEST WEAVE TO ANSWER — @${target.author.handle}:\n${target.content}\n\nWrite your reply now.`,
       ].join('\n'),
     },
   ]
@@ -1646,7 +1666,14 @@ async function createActorReply(
   try {
     const thread = threadForPost(state, target)
     const chatContext = chatContextForPost(state, target)
-    const { content, gifUrl } = await runSidecar(state, directory, replyMessages(actor, target, thread, state.settings, chatContext), userId)
+    const { content, gifUrl } = await runSidecar(
+      state,
+      directory,
+      replyMessages(actor, target, thread, state.settings, chatContext),
+      userId,
+      MAX_WEAVE_LENGTH,
+      actor,
+    )
     if (!content) throw new Error('The Timeline model returned an empty reply.')
     state.posts.unshift(createPost({ author: actor, content, gifUrl, replyTo: target, source: 'model' }))
     state.posts = prunePosts(state.posts)
