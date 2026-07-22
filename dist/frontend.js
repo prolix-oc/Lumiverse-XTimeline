@@ -11,6 +11,10 @@ var REACTION_EMOJIS = ["❤", "✨", "\uD83D\uDD25", "\uD83D\uDE02"];
 var READY_MIN_VERSION = [1, 0, 6];
 var MAX_VISIBLE_ACTORS = 30;
 var MAX_MENTION_MATCHES = 20;
+var TIMELINE_WINDOW_SIZE = 60;
+var TIMELINE_WINDOW_STEP = 24;
+var DIRECT_MESSAGE_WINDOW_SIZE = 80;
+var DIRECT_MESSAGE_WINDOW_STEP = 30;
 function parseVersionSegment(segment) {
   if (!segment)
     return 0;
@@ -183,6 +187,8 @@ function actorAvatar(actor, size = "normal") {
   if (actor.avatarUrl) {
     const image = document.createElement("img");
     image.src = actor.avatarUrl;
+    image.loading = "lazy";
+    image.decoding = "async";
     image.alt = "";
     image.addEventListener("error", () => {
       image.remove();
@@ -319,6 +325,14 @@ function setup(ctx) {
   let dmBusyActorName = null;
   let dmError = "";
   let pendingDirectMessage = null;
+  let timelineVisible = false;
+  let timelineWindowStart = 0;
+  let directMessageWindow = null;
+  let directThreadScrollPosition = null;
+  let pendingDirectThreadScrollToBottom = false;
+  let disposeTimelineWindowObserver = null;
+  let disposeDirectMessageWindowObserver = null;
+  let pendingTimelineLoad = false;
   const tab = ctx.ui.registerDrawerTab({
     id: "timeline",
     title: "Lumiverse Timeline",
@@ -330,6 +344,8 @@ function setup(ctx) {
   });
   const root = createElement("div", "xtl-app");
   tab.root.replaceChildren(root);
+  const initialDrawerState = ctx.ui.events.getDrawerState();
+  timelineVisible = initialDrawerState.open && initialDrawerState.tabId === tab.tabId;
   const removeStyle = ctx.dom.addStyle(`
     .xtl-app { --xtl-blue: #1d9bf0; --xtl-blue-soft: color-mix(in srgb, var(--xtl-blue) 16%, transparent); --xtl-surface: #0d1014; --xtl-surface-raised: #14181e; --xtl-line: #2f3336; --xtl-muted: #8b98a5; color: #f4f7fa; min-height: 100%; max-width: 760px; margin: 0 auto; padding: 0 14px 32px; box-sizing: border-box; }
     .xtl-tab--dms { height: 100%; min-height: 0; overflow: hidden; overscroll-behavior: none; }
@@ -489,6 +505,7 @@ function setup(ctx) {
     .xtl-reaction-tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7fa; font-size: 12px; font-weight: 750; }
     .xtl-reaction-tooltip-handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--xtl-muted); font-size: 10px; margin-top: 1px; }
     .xtl-feed-top { scroll-margin-top: 68px; height: 1px; }
+    .xtl-virtual-sentinel { flex: 0 0 1px; height: 1px; pointer-events: none; }
     .xtl-feed-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--xtl-line); }
     .xtl-feed-sort-label { color: var(--xtl-muted); font-size: 12px; font-weight: 700; }
     .xtl-feed-toolbar .xtl-select { max-width: none; }
@@ -550,6 +567,16 @@ function setup(ctx) {
     return snapshot.state.posts.find((post) => post.id === replyToId) ?? null;
   };
   const send = (payload) => ctx.sendToBackend(payload);
+  const requestTimelineLoad = () => {
+    if (pendingTimelineLoad)
+      return;
+    pendingTimelineLoad = true;
+    queueMicrotask(() => {
+      pendingTimelineLoad = false;
+      if (timelineVisible)
+        send({ type: "load_timeline" });
+    });
+  };
   const positionDmComposerForKeyboard = () => {
     requestAnimationFrame(() => {
       if (activeView !== "dms")
@@ -648,7 +675,7 @@ function setup(ctx) {
     return notice;
   };
   const renderFollowModal = () => {
-    if (!followModal || !snapshot)
+    if (!timelineVisible || !followModal || !snapshot)
       return;
     const modal = followModal;
     const state = snapshot;
@@ -1202,6 +1229,7 @@ function setup(ctx) {
   const renderPost = (post, depth, state) => {
     const article = createElement("article", `xtl-post${depth ? " xtl-post--reply" : ""}`);
     article.style.setProperty("--xtl-depth", String(depth));
+    article.dataset.timelinePostId = post.id;
     const header = createElement("div", "xtl-post-header");
     const author = createElement("div", "xtl-post-author");
     const nameRow = createElement("div", "xtl-post-name-row");
@@ -1219,6 +1247,8 @@ function setup(ctx) {
       img.src = gifDisplayUrl(post.gifUrl, hq);
       img.className = "xtl-post-gif";
       img.alt = "";
+      img.loading = "lazy";
+      img.decoding = "async";
       article.appendChild(img);
     }
     if (post.chatSource) {
@@ -1304,6 +1334,9 @@ function setup(ctx) {
   };
   function selectDirectThread(threadId) {
     activeDirectThreadId = threadId;
+    directMessageWindow = null;
+    directThreadScrollPosition = null;
+    pendingDirectThreadScrollToBottom = true;
     dmNewThreadOpen = false;
     selectedDirectActorKey = "";
     dmGifPickerOpen = false;
@@ -1389,6 +1422,7 @@ function setup(ctx) {
   const renderDirectMessage = (message, state, options = {}) => {
     const outgoing = message.direction === "outgoing";
     const row = createElement("div", `xtl-dm-message-row${outgoing ? " xtl-dm-message-row--outgoing" : ""}`);
+    row.dataset.directMessageId = message.id;
     const bubble = createElement("div", "xtl-dm-bubble");
     if (message.gifUrl)
       bubble.classList.add("xtl-dm-bubble--media");
@@ -1404,6 +1438,8 @@ function setup(ctx) {
       image.className = "xtl-dm-gif";
       image.src = gifDisplayUrl(message.gifUrl, Boolean(state.state.settings.highQualityGifs));
       image.alt = message.content ? "" : "GIF attachment";
+      image.loading = "lazy";
+      image.decoding = "async";
       const media = createElement("div", "xtl-dm-media");
       media.appendChild(image);
       bubble.appendChild(media);
@@ -1480,6 +1516,7 @@ function setup(ctx) {
       dmGifPickerOpen = false;
       dmBusy = true;
       dmBusyActorName = thread.actor.name;
+      pendingDirectThreadScrollToBottom = true;
       renderDms();
       send({
         type: "send_direct_message",
@@ -1536,6 +1573,8 @@ function setup(ctx) {
     return composer;
   };
   const renderDirectThread = (thread, state) => {
+    disposeDirectMessageWindowObserver?.();
+    disposeDirectMessageWindowObserver = null;
     const main = createElement("section", "xtl-dm-main");
     const header = createElement("div", "xtl-dm-thread-header");
     const back = button("‹", "xtl-button xtl-button--quiet");
@@ -1563,15 +1602,83 @@ function setup(ctx) {
     }
     if (!messages.length)
       scroll.appendChild(createElement("p", "xtl-dm-empty-inbox", "This conversation has no messages yet."));
-    for (const message of messages) {
+    if (!directMessageWindow || directMessageWindow.threadId !== thread.id) {
+      directMessageWindow = { threadId: thread.id, start: Math.max(0, messages.length - DIRECT_MESSAGE_WINDOW_SIZE) };
+    }
+    const maxStart = Math.max(0, messages.length - DIRECT_MESSAGE_WINDOW_SIZE);
+    directMessageWindow.start = Math.min(Math.max(0, directMessageWindow.start), maxStart);
+    const windowStart = directMessageWindow.start;
+    const windowEnd = Math.min(messages.length, windowStart + DIRECT_MESSAGE_WINDOW_SIZE);
+    const topSentinel = createElement("div", "xtl-virtual-sentinel");
+    topSentinel.dataset.virtualEdge = "top";
+    scroll.appendChild(topSentinel);
+    for (const message of messages.slice(windowStart, windowEnd)) {
       scroll.appendChild(renderDirectMessage(message, state, message.id === optimisticMessage?.optimisticMessage.id ? { pendingGifQuery: optimisticMessage.gifQuery } : {}));
     }
+    const bottomSentinel = createElement("div", "xtl-virtual-sentinel");
+    bottomSentinel.dataset.virtualEdge = "bottom";
+    scroll.appendChild(bottomSentinel);
     main.appendChild(scroll);
     main.appendChild(renderDirectComposer(thread, state));
+    scroll.addEventListener("scroll", () => {
+      directThreadScrollPosition = { threadId: thread.id, top: scroll.scrollTop };
+    }, { passive: true });
     requestAnimationFrame(() => {
-      scroll.scrollTop = scroll.scrollHeight;
+      if (pendingDirectThreadScrollToBottom) {
+        scroll.scrollTop = scroll.scrollHeight;
+        pendingDirectThreadScrollToBottom = false;
+      } else if (directThreadScrollPosition?.threadId === thread.id) {
+        scroll.scrollTop = directThreadScrollPosition.top;
+      }
     });
+    observeDirectMessageWindow(scroll, topSentinel, bottomSentinel, thread.id, messages.length, windowStart, windowEnd);
     return main;
+  };
+  const moveDirectMessageWindow = (threadId, nextStart) => {
+    if (!directMessageWindow || directMessageWindow.threadId !== threadId || !snapshot)
+      return;
+    const thread = snapshot.state.directThreads.find((candidate) => candidate.id === threadId);
+    if (!thread)
+      return;
+    const maxStart = Math.max(0, thread.messages.length - DIRECT_MESSAGE_WINDOW_SIZE);
+    const clamped = Math.min(Math.max(0, nextStart), maxStart);
+    if (clamped === directMessageWindow.start)
+      return;
+    const scroll = root.querySelector(".xtl-dm-thread-scroll");
+    const anchor = scroll ? [...scroll.querySelectorAll("[data-direct-message-id]")].find((message) => message.getBoundingClientRect().bottom > scroll.getBoundingClientRect().top) : null;
+    const anchorId = anchor?.dataset.directMessageId ?? null;
+    const anchorTop = anchor?.getBoundingClientRect().top ?? 0;
+    directMessageWindow.start = clamped;
+    renderDms();
+    requestAnimationFrame(() => {
+      const nextScroll = root.querySelector(".xtl-dm-thread-scroll");
+      const nextAnchor = anchorId && nextScroll ? [...nextScroll.querySelectorAll("[data-direct-message-id]")].find((message) => message.dataset.directMessageId === anchorId) : null;
+      if (nextScroll && nextAnchor)
+        nextScroll.scrollTop += nextAnchor.getBoundingClientRect().top - anchorTop;
+    });
+  };
+  const observeDirectMessageWindow = (scroll, topSentinel, bottomSentinel, threadId, total, start, end) => {
+    if (typeof IntersectionObserver === "undefined")
+      return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!timelineVisible || activeView !== "dms" || activeDirectThreadId !== threadId)
+        return;
+      for (const entry of entries) {
+        if (!entry.isIntersecting)
+          continue;
+        if (entry.target === topSentinel && start > 0) {
+          moveDirectMessageWindow(threadId, start - DIRECT_MESSAGE_WINDOW_STEP);
+          return;
+        }
+        if (entry.target === bottomSentinel && end < total) {
+          moveDirectMessageWindow(threadId, start + DIRECT_MESSAGE_WINDOW_STEP);
+          return;
+        }
+      }
+    }, { root: scroll, rootMargin: "480px 0px" });
+    observer.observe(topSentinel);
+    observer.observe(bottomSentinel);
+    disposeDirectMessageWindowObserver = () => observer.disconnect();
   };
   const renderDirectWelcome = (state) => {
     const main = createElement("section", "xtl-dm-main");
@@ -1641,7 +1748,9 @@ function setup(ctx) {
       render();
   };
   const renderTimeline = (state) => {
-    const feed = createElement("section", "xtl-card");
+    disposeTimelineWindowObserver?.();
+    disposeTimelineWindowObserver = null;
+    const feed = createElement("section", "xtl-card xtl-feed");
     timelineTopMarker = createElement("div", "xtl-feed-top");
     feed.appendChild(timelineTopMarker);
     if (timelineIsPastTop && newActorWeaveCount) {
@@ -1668,7 +1777,10 @@ function setup(ctx) {
     sort.append(newest, activity);
     sort.value = state.state.settings.feedSort;
     sort.disabled = busy;
-    sort.addEventListener("change", () => send({ type: "update_settings", feedSort: sort.value }));
+    sort.addEventListener("change", () => {
+      timelineWindowStart = 0;
+      send({ type: "update_settings", feedSort: sort.value });
+    });
     toolbar.append(sortLabel, sort);
     feed.appendChild(toolbar);
     const posts = orderedPosts(state.state.posts, state.state.settings.feedSort);
@@ -1676,9 +1788,77 @@ function setup(ctx) {
       feed.appendChild(createElement("div", "xtl-empty", "No weaves yet. Start the feed with a thought from your selected persona, or let a Lumia, Council member, or character card post first."));
       return feed;
     }
-    for (const { post, depth } of posts)
+    const maxStart = Math.max(0, posts.length - TIMELINE_WINDOW_SIZE);
+    timelineWindowStart = Math.min(Math.max(0, timelineWindowStart), maxStart);
+    const windowEnd = Math.min(posts.length, timelineWindowStart + TIMELINE_WINDOW_SIZE);
+    const topSentinel = createElement("div", "xtl-virtual-sentinel");
+    topSentinel.dataset.virtualEdge = "top";
+    feed.appendChild(topSentinel);
+    for (const { post, depth } of posts.slice(timelineWindowStart, windowEnd))
       feed.appendChild(renderPost(post, depth, state));
+    const bottomSentinel = createElement("div", "xtl-virtual-sentinel");
+    bottomSentinel.dataset.virtualEdge = "bottom";
+    feed.appendChild(bottomSentinel);
+    observeTimelineWindow(topSentinel, bottomSentinel, posts.length, timelineWindowStart, windowEnd);
     return feed;
+  };
+  const visibleTimelineAnchor = () => {
+    const posts = [...root.querySelectorAll("[data-timeline-post-id]")];
+    const anchor = posts.find((post) => post.getBoundingClientRect().bottom > 72);
+    return anchor ? { id: anchor.dataset.timelinePostId ?? "", top: anchor.getBoundingClientRect().top } : null;
+  };
+  const renderTimelineWindow = (anchor) => {
+    if (!timelineVisible || activeView !== "timeline" || !snapshot)
+      return;
+    const previousFeed = root.querySelector(".xtl-feed");
+    if (!previousFeed) {
+      render();
+      return;
+    }
+    previousFeed.replaceWith(renderTimeline(snapshot));
+    requestAnimationFrame(() => {
+      if (!anchor?.id)
+        return;
+      const next = [...root.querySelectorAll("[data-timeline-post-id]")].find((post) => post.dataset.timelinePostId === anchor.id);
+      if (next)
+        window.scrollBy({ top: next.getBoundingClientRect().top - anchor.top, behavior: "auto" });
+      updateTimelineScrollState();
+    });
+  };
+  const moveTimelineWindow = (nextStart) => {
+    if (!snapshot || nextStart === timelineWindowStart)
+      return;
+    const ordered = orderedPosts(snapshot.state.posts, snapshot.state.settings.feedSort);
+    const maxStart = Math.max(0, ordered.length - TIMELINE_WINDOW_SIZE);
+    const clamped = Math.min(Math.max(0, nextStart), maxStart);
+    if (clamped === timelineWindowStart)
+      return;
+    const anchor = visibleTimelineAnchor();
+    timelineWindowStart = clamped;
+    renderTimelineWindow(anchor);
+  };
+  const observeTimelineWindow = (topSentinel, bottomSentinel, total, start, end) => {
+    if (typeof IntersectionObserver === "undefined")
+      return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!timelineVisible || activeView !== "timeline")
+        return;
+      for (const entry of entries) {
+        if (!entry.isIntersecting)
+          continue;
+        if (entry.target === bottomSentinel && end < total) {
+          moveTimelineWindow(start + TIMELINE_WINDOW_STEP);
+          return;
+        }
+        if (entry.target === topSentinel && start > 0) {
+          moveTimelineWindow(start - TIMELINE_WINDOW_STEP);
+          return;
+        }
+      }
+    }, { rootMargin: "640px 0px" });
+    observer.observe(topSentinel);
+    observer.observe(bottomSentinel);
+    disposeTimelineWindowObserver = () => observer.disconnect();
   };
   const renderRoster = (state) => {
     const card = createElement("section", "xtl-card xtl-roster");
@@ -2020,6 +2200,10 @@ function setup(ctx) {
     disposeActorPickerPortal = null;
     disposeReactionTooltip?.();
     disposeReactionTooltip = null;
+    disposeTimelineWindowObserver?.();
+    disposeTimelineWindowObserver = null;
+    disposeDirectMessageWindowObserver?.();
+    disposeDirectMessageWindowObserver = null;
     timelineTopMarker = null;
     timelineManagementMarker = null;
     newWeavePill = null;
@@ -2027,6 +2211,14 @@ function setup(ctx) {
     personaPicker = null;
     sliderHandles.forEach((h) => h.destroy());
     sliderHandles = [];
+    if (!timelineVisible) {
+      followModal?.dismiss();
+      followModal = null;
+      tab.root.classList.remove("xtl-tab--dms");
+      root.classList.remove("xtl-app--dms");
+      root.replaceChildren();
+      return;
+    }
     const messagesView = activeView === "dms";
     tab.root.classList.toggle("xtl-tab--dms", messagesView);
     root.classList.toggle("xtl-app--dms", messagesView);
@@ -2055,6 +2247,10 @@ function setup(ctx) {
     if (!message)
       return;
     if (message.type === "timeline_state" && isSnapshot(message.snapshot)) {
+      if (!timelineVisible) {
+        snapshot = message.snapshot;
+        return;
+      }
       updateTimelineScrollState();
       trackNewActorWeaves(message.snapshot);
       snapshot = message.snapshot;
@@ -2072,6 +2268,9 @@ function setup(ctx) {
           activeDirectThreadId = createdThread.id;
           selectedDirectActorKey = "";
           pendingDirectActorKey = null;
+          directMessageWindow = null;
+          directThreadScrollPosition = null;
+          pendingDirectThreadScrollToBottom = true;
           send({ type: "read_direct_thread", threadId: createdThread.id });
         }
       }
@@ -2141,11 +2340,30 @@ function setup(ctx) {
   });
   const unsubscribeInputAction = inputAction.onClick(() => {
     includeCurrentChat = true;
+    if (!timelineVisible)
+      timelineVisible = true;
     tab.activate();
     render();
+    requestTimelineLoad();
     focusComposer();
   });
-  const unsubscribeActivate = tab.onActivate(() => send({ type: "load_timeline" }));
+  const updateDrawerVisibility = (drawer) => {
+    const nextVisible = drawer.open && drawer.tabId === tab.tabId;
+    if (nextVisible === timelineVisible)
+      return;
+    timelineVisible = nextVisible;
+    render();
+    if (timelineVisible)
+      requestTimelineLoad();
+  };
+  const unsubscribeDrawerChange = ctx.ui.events.onDrawerChange(updateDrawerVisibility);
+  const unsubscribeActivate = tab.onActivate(() => {
+    if (!timelineVisible) {
+      timelineVisible = true;
+      render();
+    }
+    requestTimelineLoad();
+  });
   const document2 = tab.root.ownerDocument;
   const onScroll = (event) => {
     const target = event.target;
@@ -2156,7 +2374,8 @@ function setup(ctx) {
   applyKeyboardPresentation(ctx.ui.events.getKeyboardState());
   const unsubscribeKeyboardPresentation = ctx.ui.events.onKeyboardChange(applyKeyboardPresentation);
   render();
-  send({ type: "load_timeline" });
+  if (timelineVisible)
+    requestTimelineLoad();
   readyGate.release();
   return () => {
     readyGate.dispose();
@@ -2166,6 +2385,10 @@ function setup(ctx) {
     disposeActorPickerPortal = null;
     disposeReactionTooltip?.();
     disposeReactionTooltip = null;
+    disposeTimelineWindowObserver?.();
+    disposeTimelineWindowObserver = null;
+    disposeDirectMessageWindowObserver?.();
+    disposeDirectMessageWindowObserver = null;
     followModal?.dismiss();
     followModal = null;
     document2.removeEventListener("scroll", onScroll, true);
@@ -2177,6 +2400,7 @@ function setup(ctx) {
     unsubscribeMessages();
     unsubscribeInputAction();
     unsubscribeActivate();
+    unsubscribeDrawerChange();
     inputAction.destroy();
     tab.root.classList.remove("xtl-tab--dms");
     tab.destroy();
